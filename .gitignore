@@ -1,0 +1,17 @@
+.vs/
+.idea/
+**/bin/
+**/obj/
+artifacts/
+TestResults/
+.coverage/
+graphify-out/
+.code-review-graph/
+.scanvault/
+*.user
+*.suo
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
