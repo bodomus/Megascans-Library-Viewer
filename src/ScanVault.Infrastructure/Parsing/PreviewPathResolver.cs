@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using ScanVault.Core.Models;
 using ScanVault.Core.Policies;
@@ -52,10 +53,9 @@ public static class PreviewPathResolver
                         ? property.Value.GetString()
                         : null;
                 }
-                else if (property.Name.Equals("resolution", StringComparison.OrdinalIgnoreCase) &&
-                         property.Value.TryGetInt32(out var parsedResolution))
+                else if (property.Name.Equals("resolution", StringComparison.OrdinalIgnoreCase))
                 {
-                    resolution = parsedResolution;
+                    resolution = ParseResolution(property.Value);
                 }
             }
 
@@ -84,6 +84,47 @@ public static class PreviewPathResolver
             }
         }
     }
+
+    private static int? ParseResolution(JsonElement element)
+    {
+        if (element.ValueKind == JsonValueKind.Number)
+        {
+            return element.TryGetInt32(out var numericResolution) && numericResolution > 0
+                ? numericResolution
+                : null;
+        }
+
+        if (element.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        var text = element.GetString()?.Trim();
+        if (string.IsNullOrEmpty(text))
+        {
+            return null;
+        }
+
+        if (int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var scalarResolution))
+        {
+            return scalarResolution > 0 ? scalarResolution : null;
+        }
+
+        var separatorIndex = text.IndexOfAny(['x', 'X', '\u00D7']);
+        if (separatorIndex <= 0 || separatorIndex >= text.Length - 1 ||
+            text.IndexOfAny(['x', 'X', '\u00D7'], separatorIndex + 1) >= 0 ||
+            !TryParsePositiveDimension(text.AsSpan(0, separatorIndex), out var width) ||
+            !TryParsePositiveDimension(text.AsSpan(separatorIndex + 1), out var height))
+        {
+            return null;
+        }
+
+        return Math.Max(width, height);
+    }
+
+    private static bool TryParsePositiveDimension(ReadOnlySpan<char> value, out int dimension) =>
+        int.TryParse(value.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out dimension) &&
+        dimension > 0;
 
     private static IEnumerable<ImageCandidate> ReadKnownCandidates(string folder, string assetId)
     {

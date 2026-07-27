@@ -30,7 +30,7 @@ public sealed class MegascansMetadataParserTests
               "stateTags": ["aged"],
               "images": [
                 { "type": "thumb", "path": "thumb.jpg", "resolution": 256 },
-                { "type": "preview", "path": "preview.jpg", "resolution": 2048 }
+                { "type": "preview", "path": "preview.jpg", "resolution": "2048x1024" }
               ]
             }
             """);
