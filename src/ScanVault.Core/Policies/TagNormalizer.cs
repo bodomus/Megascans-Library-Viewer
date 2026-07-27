@@ -4,14 +4,24 @@ namespace ScanVault.Core.Policies;
 
 public static class TagNormalizer
 {
-    public static IReadOnlyList<AssetTag> Normalize(IEnumerable<AssetTag> tags) =>
-        tags
-            .Where(static tag => !string.IsNullOrWhiteSpace(tag.Value))
-            .Select(static tag => tag with { Value = tag.Value.Trim() })
-            .DistinctBy(static tag => (tag.Kind, tag.Value), AssetTagIdentityComparer.Instance)
-            .OrderBy(static tag => tag.Kind)
-            .ThenBy(static tag => tag.Value, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+    public static IReadOnlyList<AssetTag> Normalize(IEnumerable<AssetTag> tags)
+    {
+        var seen = new HashSet<(AssetTagKind Kind, string Value)>(
+            AssetTagIdentityComparer.Instance);
+        var result = new List<AssetTag>();
+        foreach (var tag in tags)
+        {
+            var value = MetadataNormalizer.NormalizeOptional(tag.Value);
+            if (value is null || !seen.Add((tag.Kind, value)))
+            {
+                continue;
+            }
+
+            result.Add(tag with { Value = value });
+        }
+
+        return result;
+    }
 
     private sealed class AssetTagIdentityComparer : IEqualityComparer<(AssetTagKind Kind, string Value)>
     {

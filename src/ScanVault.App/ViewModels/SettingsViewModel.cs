@@ -9,6 +9,7 @@ public sealed class SettingsViewModel(ISettingsStore store) : ObservableObject
 {
     private string libraryRoot = string.Empty;
     private string? validationError;
+    private AssetSortMode sortMode;
     private LibrarySettings savedSettings = LibrarySettings.Empty;
 
     public string LibraryRoot
@@ -25,6 +26,12 @@ public sealed class SettingsViewModel(ISettingsStore store) : ObservableObject
         }
     }
 
+    public AssetSortMode SortMode
+    {
+        get => sortMode;
+        private set => SetProperty(ref sortMode, value);
+    }
+
     public string? ValidationError
     {
         get => validationError;
@@ -38,12 +45,31 @@ public sealed class SettingsViewModel(ISettingsStore store) : ObservableObject
 
     public bool CanRescan => !IsDirty && SettingsValidator.Validate(Current).IsValid;
 
-    public LibrarySettings Current => new(LibraryRoot.Trim());
+    public LibrarySettings Current => new(LibraryRoot.Trim(), SortMode);
 
     public async Task LoadAsync(CancellationToken cancellationToken)
     {
         savedSettings = await store.LoadAsync(cancellationToken);
+        if (!Enum.IsDefined(savedSettings.SortMode))
+        {
+            savedSettings = savedSettings with { SortMode = AssetSortMode.NameAscending };
+        }
+
+        SortMode = savedSettings.SortMode;
         LibraryRoot = savedSettings.LibraryRoot;
+        OnPropertyChanged(nameof(IsDirty));
+        OnPropertyChanged(nameof(CanRescan));
+    }
+
+    public async Task SaveSortModeAsync(
+        AssetSortMode value,
+        CancellationToken cancellationToken)
+    {
+        // Sorting is independent of an unsaved library-root edit in the settings dialog.
+        var updated = savedSettings with { SortMode = value };
+        await store.SaveAsync(updated, cancellationToken);
+        savedSettings = updated;
+        SortMode = value;
         OnPropertyChanged(nameof(IsDirty));
         OnPropertyChanged(nameof(CanRescan));
     }

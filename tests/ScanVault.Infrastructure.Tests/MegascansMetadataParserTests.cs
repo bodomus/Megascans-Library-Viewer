@@ -43,7 +43,7 @@ public sealed class MegascansMetadataParserTests
         var asset = Assert.IsType<AssetSummary>(result.Asset);
         Assert.Equal("qgphP2", asset.Id);
         Assert.Equal("Mossy Rock", asset.Name);
-        Assert.Equal(8192, asset.MaxResolution);
+        Assert.Equal(new ImageResolution(8192, 8192), asset.MaxResolution);
         Assert.Equal(10.5, asset.TexelDensity);
         Assert.EndsWith("thumb.jpg", asset.ThumbnailPath, StringComparison.OrdinalIgnoreCase);
         Assert.EndsWith("preview.jpg", asset.PreviewPath, StringComparison.OrdinalIgnoreCase);

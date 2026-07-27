@@ -33,14 +33,32 @@ public sealed class MegascansMetadataParser(
                 cancellationToken).ConfigureAwait(false);
 
             var root = document.RootElement;
-            var id = JsonElementSearch.FindString(root, "id", "assetId", "asset_id");
-            var name = JsonElementSearch.FindString(root, "name", "assetName", "title");
-            var assetType = JsonElementSearch.FindString(root, "assetType", "type");
+            var id = JsonElementSearch.GetDirectString(root, "id", "assetId", "asset_id");
+            var name = JsonElementSearch.GetDirectString(root, "name", "assetName", "title");
+            var semanticTags = GetObject(root, "semanticTags", "semantic_tags");
+            var rootCategories = JsonElementSearch.GetDirectStrings(root, "categories", "category");
+            var assetCategoryKeys = GetAssetCategoryKeys(root);
+
+            // Precedence is intentionally explicit: no unrestricted recursive "type" lookup
+            // can allow a texture component such as normal/specular to classify the asset.
+            var typeCandidates = new List<string?>
+            {
+                semanticTags is { } semantic
+                    ? JsonElementSearch.GetDirectString(semantic, "asset_type", "assetType")
+                    : null,
+                JsonElementSearch.GetDirectString(root, "assetType", "asset_type", "type")
+            };
+            typeCandidates.AddRange(JsonElementSearch.GetDirectStrings(
+                root,
+                "classification",
+                "rootCategory"));
+            typeCandidates.AddRange(assetCategoryKeys);
+            typeCandidates.AddRange(rootCategories);
+            var type = MetadataNormalizer.ResolveAssetType(typeCandidates);
 
             // Requiring an ID plus a recognizable descriptive field prevents
             // unrelated application JSON from becoming a library asset.
-            if (string.IsNullOrWhiteSpace(id) ||
-                string.IsNullOrWhiteSpace(name) && string.IsNullOrWhiteSpace(assetType))
+            if (id is null || name is null && type.Canonical == "Unknown")
             {
                 return AssetParseResult.Unrelated();
             }
@@ -48,30 +66,34 @@ public sealed class MegascansMetadataParser(
             var folder = PathPolicy.Normalize(Path.GetDirectoryName(jsonPath)
                 ?? throw new InvalidDataException("Metadata path has no parent directory."));
             var paths = PreviewPathResolver.Resolve(root, folder, id);
-            var categories = JsonElementSearch.FindStrings(
-                root,
-                "categories",
-                "assetCategories",
-                "category");
-            var tags = BuildTags(root, categories);
+            var categories = MetadataNormalizer.NormalizeValues(
+                rootCategories.Count > 0 ? rootCategories : assetCategoryKeys,
+                name);
+            var resolution = ReadMaximumResolution(root, jsonPath, semanticTags);
+            var physicalSize = ReadPhysicalSize(root);
+            var texelDensity = ReadTexelDensity(root);
+            var tags = BuildTags(root, semanticTags, categories);
 
             var asset = new AssetSummary(
                 id,
                 name ?? id,
-                assetType ?? "Unknown",
+                type.Canonical,
                 folder,
                 PathPolicy.Normalize(jsonPath),
                 paths.ThumbnailPath,
                 paths.PreviewPath,
-                JsonElementSearch.FindString(root, "biome"),
-                JsonElementSearch.FindString(root, "region"),
-                JsonElementSearch.FindString(root, "physicalSize", "physical_size"),
-                JsonElementSearch.FindResolution(root, "maxResolution", "maximumResolution", "resolution"),
-                JsonElementSearch.FindDouble(root, "texelDensity", "texel_density"),
-                JsonElementSearch.FindString(root, "averageColor", "average_color"),
+                ReadOptional(root, semanticTags, "biome"),
+                ReadOptional(root, semanticTags, "region"),
+                physicalSize,
+                resolution,
+                texelDensity,
+                ReadOptional(root, semanticTags, "averageColor", "average_color"),
                 categories,
                 tags,
-                new FileInfo(jsonPath).LastWriteTimeUtc);
+                new FileInfo(jsonPath).LastWriteTimeUtc)
+            {
+                RawAssetType = type.Raw
+            };
 
             return AssetParseResult.Success(asset);
         }
@@ -92,30 +114,161 @@ public sealed class MegascansMetadataParser(
         }
     }
 
+    private ImageResolution? ReadMaximumResolution(
+        JsonElement root,
+        string jsonPath,
+        JsonElement? semanticTags)
+    {
+        var parsed = new List<ImageResolution>();
+        var rawValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        AddResolution(
+            JsonElementSearch.GetDirectString(
+                root,
+                "maxResolution",
+                "maximumResolution",
+                "max_resolution"));
+        if (semanticTags is { } semantic)
+        {
+            AddResolution(JsonElementSearch.GetDirectString(semantic, "resolution"));
+        }
+
+        foreach (var containerName in new[] { "components", "maps" })
+        {
+            if (!JsonElementSearch.TryGetProperty(root, containerName, out var container))
+            {
+                continue;
+            }
+
+            foreach (var element in JsonElementSearch.FindPropertyValues(container, "resolution"))
+            {
+                AddResolution(JsonElementSearch.ScalarToString(element));
+            }
+        }
+
+        return MetadataNormalizer.SelectMaximum(parsed);
+
+        void AddResolution(string? raw)
+        {
+            var normalized = MetadataNormalizer.NormalizeOptional(raw);
+            if (normalized is null || !rawValues.Add(normalized))
+            {
+                return;
+            }
+
+            if (MetadataNormalizer.TryParseResolution(normalized, out var value))
+            {
+                parsed.Add(value);
+            }
+            else
+            {
+                InfrastructureLog.MalformedResolution(logger, jsonPath, normalized);
+            }
+        }
+    }
+
+    private static string? ReadPhysicalSize(JsonElement root)
+    {
+        var raw = JsonElementSearch.GetDirectString(root, "physicalSize", "physical_size") ??
+                  JsonElementSearch.FindKeyedValue(root, "key", "scanArea", "value");
+        if (raw is null)
+        {
+            foreach (var containerName in new[] { "components", "maps" })
+            {
+                if (!JsonElementSearch.TryGetProperty(root, containerName, out var container))
+                {
+                    continue;
+                }
+
+                raw = JsonElementSearch.FindPropertyValues(container, "physicalSize")
+                    .Select(JsonElementSearch.ScalarToString)
+                    .FirstOrDefault(static value => MetadataNormalizer.NormalizeOptional(value) is not null);
+                if (raw is not null)
+                {
+                    break;
+                }
+            }
+        }
+
+        return MetadataNormalizer.NormalizePhysicalSize(raw);
+    }
+
+    private static double? ReadTexelDensity(JsonElement root)
+    {
+        var raw = JsonElementSearch.GetDirectString(root, "texelDensity", "texel_density") ??
+                  JsonElementSearch.FindKeyedValue(root, "key", "texelDensity", "value");
+        return MetadataNormalizer.ParseTexelDensity(raw);
+    }
+
+    private static IReadOnlyList<string> GetAssetCategoryKeys(JsonElement root)
+    {
+        if (!JsonElementSearch.TryGetProperty(root, "assetCategories", out var value))
+        {
+            return [];
+        }
+
+        return MetadataNormalizer.NormalizeValues(JsonElementSearch.EnumerateObjectKeys(value));
+    }
+
     private static IReadOnlyList<AssetTag> BuildTags(
         JsonElement root,
+        JsonElement? semanticTags,
         IReadOnlyList<string> categories)
     {
         var tags = new List<AssetTag>();
         tags.AddRange(categories.Select(static value => new AssetTag(AssetTagKind.Category, value)));
-        Add(tags, root, AssetTagKind.Descriptive, "descriptiveTags", "semanticTags", "tags");
+        Add(tags, root, AssetTagKind.Descriptive, "descriptiveTags", "tags");
         Add(tags, root, AssetTagKind.State, "stateTags", "condition", "state");
         Add(tags, root, AssetTagKind.Color, "colorTags", "colors");
         Add(tags, root, AssetTagKind.Industry, "industryTags", "industries");
         Add(tags, root, AssetTagKind.Contains, "containsTags", "contains");
         Add(tags, root, AssetTagKind.Theme, "themeTags", "themes");
+
+        if (semanticTags is { } semantic)
+        {
+            Add(tags, semantic, AssetTagKind.Descriptive, "descriptive");
+            Add(tags, semantic, AssetTagKind.State, "state");
+            Add(tags, semantic, AssetTagKind.Color, "color", "colors");
+            Add(tags, semantic, AssetTagKind.Industry, "industry", "industries");
+            Add(tags, semantic, AssetTagKind.Contains, "contains");
+            Add(tags, semantic, AssetTagKind.Theme, "theme");
+        }
+
         return TagNormalizer.Normalize(tags);
     }
 
     private static void Add(
         List<AssetTag> tags,
-        JsonElement root,
+        JsonElement source,
         AssetTagKind kind,
         params string[] propertyNames)
     {
-        foreach (var value in JsonElementSearch.FindStrings(root, propertyNames))
+        foreach (var value in JsonElementSearch.GetDirectStrings(source, propertyNames))
         {
             tags.Add(new(kind, value));
         }
+    }
+
+    private static string? ReadOptional(
+        JsonElement root,
+        JsonElement? semanticTags,
+        params string[] names) =>
+        JsonElementSearch.GetDirectString(root, names) ??
+        (semanticTags is { } semantic
+            ? JsonElementSearch.GetDirectString(semantic, names)
+            : null);
+
+    private static JsonElement? GetObject(JsonElement root, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (JsonElementSearch.TryGetProperty(root, name, out var value) &&
+                value.ValueKind == JsonValueKind.Object)
+            {
+                return value;
+            }
+        }
+
+        return null;
     }
 }

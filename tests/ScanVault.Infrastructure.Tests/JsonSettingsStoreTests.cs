@@ -15,7 +15,7 @@ public sealed class JsonSettingsStoreTests
             System.IO.Path.Combine(temporary.Path, "roaming", "settings.json"),
             System.IO.Path.Combine(temporary.Path, "cache"));
         var store = new JsonSettingsStore(paths);
-        var expected = new LibrarySettings(@"C:\Megascans");
+        var expected = new LibrarySettings(@"C:\Megascans", AssetSortMode.RecentlyModified);
 
         await store.SaveAsync(expected, CancellationToken.None);
         var loaded = await store.LoadAsync(CancellationToken.None);

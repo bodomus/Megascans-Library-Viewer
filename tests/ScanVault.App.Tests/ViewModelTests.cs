@@ -1,5 +1,6 @@
 using System.IO;
 using System.Windows.Media;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ScanVault.App.Services;
 using ScanVault.App.ViewModels;
@@ -18,7 +19,7 @@ public sealed class ViewModelTests : IDisposable
     public ViewModelTests() => Directory.CreateDirectory(root);
 
     [Fact]
-    public async Task SettingsRequireExplicitSaveBeforeRescan()
+    public async Task SettingsRequireExplicitSaveBeforeRescanAndPersistSort()
     {
         var store = new MemorySettingsStore(new(root));
         var viewModel = new SettingsViewModel(store);
@@ -30,12 +31,16 @@ public sealed class ViewModelTests : IDisposable
         Assert.True(viewModel.IsDirty);
         Assert.False(viewModel.CanRescan);
         Assert.True(await viewModel.SaveAsync(CancellationToken.None));
+        await viewModel.SaveSortModeAsync(
+            AssetSortMode.ResolutionDescending,
+            CancellationToken.None);
         Assert.False(viewModel.IsDirty);
         Assert.True(viewModel.CanRescan);
+        Assert.Equal(AssetSortMode.ResolutionDescending, store.Value.SortMode);
     }
 
     [Fact]
-    public async Task MainViewModelFiltersSelectedFolderAndEnablesCommands()
+    public async Task MainViewModelComposesFolderSearchSortAndPreservesSelection()
     {
         var nature = Path.Combine(root, "Nature");
         var urban = Path.Combine(root, "Urban");
@@ -43,36 +48,65 @@ public sealed class ViewModelTests : IDisposable
         Directory.CreateDirectory(urban);
         var assets = new[]
         {
-            CreateAsset("nature", nature),
-            CreateAsset("urban", urban)
+            CreateAsset("b", "Mossy Boulder", nature, "rock"),
+            CreateAsset("a", "Forest Fern", nature, "plant"),
+            CreateAsset("urban", "Brick Wall", urban, "brick")
         };
         var settingsStore = new MemorySettingsStore(new(root));
-        using var viewModel = new MainViewModel(
-            new MemoryIndex(assets),
-            new NoOpScanService(),
-            settingsStore,
-            new NullImageLoader(),
-            NullLogger<MainViewModel>.Instance);
+        var interactions = new RecordingInteractions();
+        using var viewModel = CreateMainViewModel(assets, settingsStore, interactions);
 
         await viewModel.InitializeAsync(CancellationToken.None);
         var rootNode = Assert.Single(viewModel.Folders);
+        Assert.Equal(3, rootNode.AssetCount);
         var natureNode = Assert.Single(rootNode.Children, static node => node.Name == "Nature");
+        Assert.Equal(2, natureNode.AssetCount);
         viewModel.SelectFolder(natureNode);
+        Assert.Equal(["a", "b"], viewModel.Assets.Select(card => card.Asset.Id));
 
+        viewModel.SelectedCard = viewModel.Assets[1];
+        await viewModel.ChangeSortAsync(AssetSortMode.NameDescending);
+        Assert.Equal("b", viewModel.SelectedCard?.Asset.Id);
+
+        viewModel.SearchText = "rock";
         var visible = Assert.Single(viewModel.Assets);
-        Assert.Equal("nature", visible.Id);
+        Assert.Equal("b", visible.Asset.Id);
         Assert.True(viewModel.RescanCommand.CanExecute(null));
 
-        viewModel.Settings.LibraryRoot = urban;
-        Assert.False(viewModel.RescanCommand.CanExecute(null));
-        Assert.True(viewModel.SaveSettingsCommand.CanExecute(null));
+        viewModel.CopySelectedFolderCommand.Execute(null);
+        Assert.Equal(nature, interactions.CopiedText);
+    }
+
+    [Fact]
+    public async Task CardFormatsNormalizedHierarchyAndOmitsMissingRows()
+    {
+        var asset = CreateAsset("ExactCase", "Stone", root, "debris") with
+        {
+            MaxResolution = new ImageResolution(4096, 2048)
+        };
+        var interactions = new RecordingInteractions();
+        using var card = new AssetCardViewModel(
+            asset,
+            new NullImageLoader(),
+            interactions,
+            static _ => Task.CompletedTask,
+            static _ => { },
+            NullLogger<AssetCardViewModel>.Instance);
+
+        Assert.Equal("ID: ExactCase", card.IdDisplay);
+        Assert.Contains("Surface", card.TypeAndCategory, StringComparison.Ordinal);
+        Assert.Contains("4096 × 2048", card.CompactDetails, StringComparison.Ordinal);
+        Assert.False(card.HasBiome);
+        Assert.False(card.HasRegion);
+        card.CopyAssetIdCommand.Execute(null);
+        Assert.Equal("ExactCase", interactions.CopiedText);
     }
 
     [Fact]
     public async Task PreviewStateOpensAndClosesWithoutRequiringAnImage()
     {
         using var preview = new PreviewViewModel(new NullImageLoader());
-        var asset = CreateAsset("preview", root);
+        var asset = CreateAsset("preview", "Preview", root, "test");
 
         await preview.OpenAsync(asset);
 
@@ -85,11 +119,27 @@ public sealed class ViewModelTests : IDisposable
 
     public void Dispose() => Directory.Delete(root, recursive: true);
 
-    private static AssetSummary CreateAsset(string id, string folder) =>
+    private static MainViewModel CreateMainViewModel(
+        IReadOnlyList<AssetSummary> assets,
+        MemorySettingsStore settingsStore,
+        RecordingInteractions interactions) => new(
+            new MemoryIndex(assets),
+            new NoOpScanService(),
+            settingsStore,
+            new NullImageLoader(),
+            interactions,
+            NullLoggerFactory.Instance,
+            NullLogger<MainViewModel>.Instance);
+
+    private static AssetSummary CreateAsset(
+        string id,
+        string name,
+        string folder,
+        string tag) =>
         new(
             id,
-            id,
-            "surface",
+            name,
+            "Surface",
             folder,
             Path.Combine(folder, $"{id}.json"),
             null,
@@ -100,26 +150,27 @@ public sealed class ViewModelTests : IDisposable
             null,
             null,
             null,
-            [],
-            [],
+            [tag],
+            [new AssetTag(AssetTagKind.Descriptive, tag)],
             DateTimeOffset.UnixEpoch);
 
     private sealed class MemorySettingsStore(LibrarySettings settings) : ISettingsStore
     {
-        private LibrarySettings value = settings;
+        public LibrarySettings Value { get; private set; } = settings;
 
         public Task<LibrarySettings> LoadAsync(CancellationToken cancellationToken) =>
-            Task.FromResult(value);
+            Task.FromResult(Value);
 
         public Task SaveAsync(LibrarySettings settings, CancellationToken cancellationToken)
         {
-            value = settings;
+            Value = settings;
             return Task.CompletedTask;
         }
     }
 
     private sealed class MemoryIndex(IReadOnlyList<AssetSummary> assets) : IAssetIndex
     {
+        public bool RequiresNormalizationRescan => false;
         public Task InitializeAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task<IReadOnlyList<AssetSummary>> GetAssetsAsync(
@@ -150,5 +201,14 @@ public sealed class ViewModelTests : IDisposable
             int decodePixelWidth,
             CancellationToken cancellationToken) =>
             Task.FromResult<ImageSource?>(null);
+    }
+
+    private sealed class RecordingInteractions : IAssetInteractionService
+    {
+        public string? CopiedText { get; private set; }
+
+        public void CopyText(string text) => CopiedText = text;
+
+        public void OpenFolder(string folderPath) { }
     }
 }

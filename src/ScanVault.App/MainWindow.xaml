@@ -32,9 +32,16 @@
                 <TextBlock DockPanel.Dock="Right" Text="{Binding StatusText}"
                            Foreground="{StaticResource TextSecondary}"
                            VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                           MaxWidth="520" Margin="12,0,0,0" />
-                <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                         ToolTip="Filter by name, ID, or type"
+                           MaxWidth="410" Margin="12,0,0,0" />
+                <ComboBox DockPanel.Dock="Right" Width="190" Margin="8,0,0,0"
+                          ItemsSource="{Binding SortOptions}"
+                          DisplayMemberPath="Label" SelectedValuePath="Mode"
+                          SelectedValue="{Binding SortMode, Mode=OneWay}"
+                          SelectionChanged="OnSortSelectionChanged"
+                          ToolTip="Sort visible assets" />
+                <TextBox x:Name="SearchBox"
+                         Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                         ToolTip="Filter by name, ID, type, category, tags, biome, or region"
                          VerticalContentAlignment="Center"
                          Padding="10,5" MinWidth="220" MaxWidth="420" />
             </DockPanel>
@@ -71,7 +78,7 @@
                         <TreeView.Resources>
                             <HierarchicalDataTemplate DataType="{x:Type models:FolderNode}"
                                                       ItemsSource="{Binding Children}">
-                                <TextBlock Text="{Binding Name}" ToolTip="{Binding FullPath}" />
+                                <TextBlock Text="{Binding DisplayName}" ToolTip="{Binding FullPath}" />
                             </HierarchicalDataTemplate>
                         </TreeView.Resources>
                     </TreeView>
@@ -81,7 +88,9 @@
             <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch"
                           Background="#343B46" />
 
-            <ListBox Grid.Column="2" ItemsSource="{Binding Assets}"
+            <ListBox x:Name="AssetList" Grid.Column="2" ItemsSource="{Binding Assets}"
+                     SelectedItem="{Binding SelectedCard, Mode=TwoWay}"
+                     SelectionMode="Single" PreviewKeyDown="OnAssetListPreviewKeyDown"
                      Background="{StaticResource WindowBackground}"
                      BorderThickness="0" ScrollViewer.CanContentScroll="True"
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
@@ -101,48 +110,67 @@
                         <Setter Property="VerticalContentAlignment" Value="Stretch" />
                         <Setter Property="Background" Value="Transparent" />
                         <Setter Property="BorderThickness" Value="0" />
+                        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
                     </Style>
                 </ListBox.ItemContainerStyle>
                 <ListBox.ItemTemplate>
                     <DataTemplate>
-                        <Border x:Name="CardRoot" Background="{StaticResource CardBackground}"
-                                CornerRadius="7" Padding="7" Margin="2"
+                        <Border x:Name="CardRoot" CornerRadius="7" Padding="7" Margin="2"
+                                BorderThickness="2"
                                 Loaded="OnAssetCardLoaded" Unloaded="OnAssetCardUnloaded"
                                 MouseEnter="OnAssetCardMouseEnter"
-                                MouseLeave="OnAssetCardMouseLeave">
+                                MouseLeave="OnAssetCardMouseLeave"
+                                MouseLeftButtonDown="OnAssetCardDoubleClick"
+                                PreviewMouseRightButtonDown="OnAssetCardRightButtonDown">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Background" Value="{StaticResource CardBackground}" />
+                                    <Setter Property="BorderBrush" Value="Transparent" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                            <Setter Property="Background" Value="#34485F" />
+                                            <Setter Property="BorderBrush" Value="#73B7FF" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsKeyboardFocusWithin, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                            <Setter Property="BorderBrush" Value="#D7E9FF" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <Border.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Open preview" Command="{Binding OpenPreviewCommand}" />
+                                    <MenuItem Header="Open folder" Command="{Binding OpenFolderCommand}" />
+                                    <Separator />
+                                    <MenuItem Header="Copy asset ID" Command="{Binding CopyAssetIdCommand}" />
+                                    <MenuItem Header="Copy folder path" Command="{Binding CopyFolderPathCommand}" />
+                                    <MenuItem Header="Copy JSON path" Command="{Binding CopyJsonPathCommand}" />
+                                </ContextMenu>
+                            </Border.ContextMenu>
                             <Grid>
-                                <Button Command="{Binding OpenPreviewCommand}"
-                                        Background="Transparent" BorderThickness="0"
-                                        Padding="0" HorizontalContentAlignment="Stretch">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="140" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <Border Grid.Row="0" Background="#15181D"
+                                        CornerRadius="5" ClipToBounds="True">
                                     <Grid>
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="140" />
-                                            <RowDefinition Height="*" />
-                                        </Grid.RowDefinitions>
-                                        <Border Grid.Row="0" Background="#15181D"
-                                                CornerRadius="5" ClipToBounds="True">
-                                            <Grid>
-                                                <TextBlock Text="No preview"
-                                                           Foreground="#66707D"
-                                                           HorizontalAlignment="Center"
-                                                           VerticalAlignment="Center" />
-                                                <Image Source="{Binding Thumbnail}"
-                                                       Stretch="UniformToFill" />
-                                            </Grid>
-                                        </Border>
-                                        <StackPanel Grid.Row="1" Margin="3,7,3,0">
-                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold"
-                                                       Foreground="{StaticResource TextPrimary}"
-                                                       TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Text="{Binding Id}" FontSize="11"
-                                                       Foreground="{StaticResource TextSecondary}"
-                                                       TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Text="{Binding TypeAndCategory}" FontSize="11"
-                                                       Foreground="{StaticResource Accent}"
-                                                       TextTrimming="CharacterEllipsis" />
-                                        </StackPanel>
+                                        <TextBlock Text="No preview" Foreground="#66707D"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" />
                                     </Grid>
-                                </Button>
+                                </Border>
+                                <StackPanel Grid.Row="1" Margin="3,7,3,0">
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextPrimary}"
+                                               TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}" />
+                                    <TextBlock Text="{Binding TypeAndCategory}" FontSize="11"
+                                               Foreground="{StaticResource TextSecondary}"
+                                               TextTrimming="CharacterEllipsis" ToolTip="{Binding TypeAndCategory}" />
+                                    <TextBlock Text="{Binding CompactDetails}" FontSize="11"
+                                               Foreground="{StaticResource Accent}"
+                                               TextTrimming="CharacterEllipsis" ToolTip="{Binding CompactDetails}" />
+                                </StackPanel>
 
                                 <Popup IsOpen="{Binding IsHoverOpen, Mode=OneWay}"
                                        PlacementTarget="{Binding ElementName=CardRoot}"
@@ -151,33 +179,47 @@
                                        Focusable="False" PopupAnimation="Fade">
                                     <Border Background="#F3222730" BorderBrush="#687384"
                                             BorderThickness="1" CornerRadius="7"
-                                            Padding="14" MaxWidth="430">
-                                        <StackPanel>
-                                            <TextBlock Text="{Binding Name}" FontWeight="Bold"
-                                                       FontSize="15" Foreground="White"
-                                                       TextWrapping="Wrap" />
-                                            <TextBlock Text="{Binding Id}" Foreground="#B9C1CC"
-                                                       Margin="0,1,0,8" />
-                                            <TextBlock Text="{Binding Asset.AssetType, StringFormat=Type: {0}}"
-                                                       Foreground="White" />
-                                            <TextBlock Text="{Binding CategoriesDisplay, StringFormat=Categories: {0}}"
-                                                       Foreground="White" TextWrapping="Wrap" />
-                                            <TextBlock Text="{Binding BiomeDisplay, StringFormat=Biome: {0}}"
-                                                       Foreground="White" />
-                                            <TextBlock Text="{Binding RegionDisplay, StringFormat=Region: {0}}"
-                                                       Foreground="White" />
-                                            <TextBlock Text="{Binding PhysicalSizeDisplay, StringFormat=Physical size: {0}}"
-                                                       Foreground="White" />
-                                            <TextBlock Text="{Binding ResolutionDisplay, StringFormat=Maximum resolution: {0}}"
-                                                       Foreground="White" />
-                                            <TextBlock Text="{Binding TexelDensityDisplay, StringFormat=Texel density: {0}}"
-                                                       Foreground="White" />
-                                            <TextBlock Text="{Binding TagsDisplay, StringFormat=Tags: {0}}"
-                                                       Foreground="White" TextWrapping="Wrap" />
-                                            <TextBlock Text="{Binding Asset.AssetFolderPath, StringFormat=Folder: {0}}"
-                                                       Foreground="#B9C1CC" TextWrapping="Wrap"
-                                                       Margin="0,7,0,0" />
-                                        </StackPanel>
+                                            Padding="14" MaxWidth="470" MaxHeight="520">
+                                        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                                      HorizontalScrollBarVisibility="Disabled">
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding Name}" FontWeight="Bold"
+                                                           FontSize="15" Foreground="White" TextWrapping="Wrap" />
+                                                <TextBlock Text="{Binding IdDisplay}" Foreground="#B9C1CC"
+                                                           Margin="0,1,0,8" />
+                                                <TextBlock Text="{Binding TypeAndCategory}"
+                                                           Foreground="White" TextWrapping="Wrap" />
+                                                <TextBlock Text="{Binding CategoriesDisplay, StringFormat=Categories: {0}}"
+                                                           Foreground="White" TextWrapping="Wrap" />
+                                                <TextBlock Text="{Binding ResolutionDisplay, StringFormat=Resolution: {0}}"
+                                                           Foreground="White" Visibility="{Binding HasResolution, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                <TextBlock Text="{Binding PhysicalSizeDisplay, StringFormat=Physical size: {0}}"
+                                                           Foreground="White" Visibility="{Binding HasPhysicalSize, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                <TextBlock Text="{Binding TexelDensityDisplay, StringFormat=Texel density: {0}}"
+                                                           Foreground="White" Visibility="{Binding HasTexelDensity, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                <TextBlock Text="{Binding BiomeDisplay, StringFormat=Biome: {0}}"
+                                                           Foreground="White" Margin="0,7,0,0"
+                                                           Visibility="{Binding HasBiome, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                <TextBlock Text="{Binding RegionDisplay, StringFormat=Region: {0}}"
+                                                           Foreground="White" Visibility="{Binding HasRegion, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                <TextBlock Text="{Binding DescriptiveTagsDisplay, StringFormat=Tags: {0}}"
+                                                           Foreground="White" TextWrapping="Wrap" Margin="0,7,0,0"
+                                                           Visibility="{Binding HasDescriptiveTags, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                <TextBlock Text="{Binding StateDisplay, StringFormat=State: {0}}"
+                                                           Foreground="White" TextWrapping="Wrap"
+                                                           Visibility="{Binding HasState, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                <TextBlock Text="{Binding ColorsDisplay, StringFormat=Colors: {0}}"
+                                                           Foreground="White" TextWrapping="Wrap"
+                                                           Visibility="{Binding HasColors, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                <TextBlock Text="{Binding IndustriesDisplay, StringFormat=Industries: {0}}"
+                                                           Foreground="White" TextWrapping="Wrap"
+                                                           Visibility="{Binding HasIndustries, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                <TextBlock Text="Folder" FontWeight="SemiBold" Foreground="White"
+                                                           Margin="0,8,0,1" />
+                                                <TextBlock Text="{Binding Asset.AssetFolderPath}" Foreground="#B9C1CC"
+                                                           TextWrapping="Wrap" />
+                                            </StackPanel>
+                                        </ScrollViewer>
                                     </Border>
                                 </Popup>
                             </Grid>
@@ -196,8 +238,7 @@
                 <TextBlock DockPanel.Dock="Left" Margin="18,0,0,0"
                            Text="{Binding VisibleAssetCount, StringFormat=Visible: {0:N0}}"
                            Foreground="{StaticResource TextSecondary}" />
-                <ProgressBar DockPanel.Dock="Right" Width="150" Height="8"
-                             IsIndeterminate="True">
+                <ProgressBar DockPanel.Dock="Right" Width="150" Height="8" IsIndeterminate="True">
                     <ProgressBar.Style>
                         <Style TargetType="ProgressBar">
                             <Setter Property="Visibility" Value="Collapsed" />
@@ -214,11 +255,9 @@
 
         <Grid Grid.RowSpan="3" Panel.ZIndex="20"
               Visibility="{Binding Preview.IsOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
-            <Button Background="#D9000000" BorderThickness="0"
-                    Command="{Binding ClosePreviewCommand}" />
+            <Button Background="#D9000000" BorderThickness="0" Command="{Binding ClosePreviewCommand}" />
             <Border Background="#F31B1F25" BorderBrush="#657080" BorderThickness="1"
-                    CornerRadius="10" Padding="16" Margin="70"
-                    HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                    CornerRadius="10" Padding="16" Margin="70">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -230,15 +269,14 @@
                         <StackPanel>
                             <TextBlock Text="{Binding Preview.Asset.Name}" FontSize="20"
                                        FontWeight="SemiBold" Foreground="White" />
-                            <TextBlock Text="{Binding Preview.Asset.Id}"
+                            <TextBlock Text="{Binding Preview.Asset.Id, StringFormat=ID: {0}}"
                                        Foreground="{StaticResource TextSecondary}" />
                         </StackPanel>
                     </DockPanel>
                     <Border Grid.Row="1" Background="#0E1014" CornerRadius="6">
                         <Grid>
-                            <TextBlock Text="Preview unavailable"
-                                       Foreground="#66707D" HorizontalAlignment="Center"
-                                       VerticalAlignment="Center" FontSize="16" />
+                            <TextBlock Text="Preview unavailable" Foreground="#66707D"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="16" />
                             <Image Source="{Binding Preview.Image}" Stretch="Uniform" />
                         </Grid>
                     </Border>

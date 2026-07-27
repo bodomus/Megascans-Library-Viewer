@@ -1,11 +1,11 @@
-using System.Globalization;
 using System.Text.Json;
+using ScanVault.Core.Policies;
 
 namespace ScanVault.Infrastructure.Parsing;
 
 internal static class JsonElementSearch
 {
-    public static bool TryFind(JsonElement element, string name, out JsonElement value)
+    public static bool TryGetProperty(JsonElement element, string name, out JsonElement value)
     {
         if (element.ValueKind == JsonValueKind.Object)
         {
@@ -17,12 +17,74 @@ internal static class JsonElementSearch
                     return true;
                 }
             }
+        }
+
+        value = default;
+        return false;
+    }
+
+    public static string? GetDirectString(JsonElement element, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (TryGetProperty(element, name, out var value))
+            {
+                var normalized = MetadataNormalizer.NormalizeOptional(ScalarToString(value));
+                if (normalized is not null)
+                {
+                    return normalized;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    public static IReadOnlyList<string> GetDirectStrings(
+        JsonElement element,
+        params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (!TryGetProperty(element, name, out var value))
+            {
+                continue;
+            }
+
+            var result = MetadataNormalizer.NormalizeValues(FlattenStrings(value));
+            if (result.Count > 0)
+            {
+                return result;
+            }
+        }
+
+        return [];
+    }
+
+    public static string? FindKeyedValue(
+        JsonElement element,
+        string keyProperty,
+        string keyValue,
+        string valueProperty)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            var key = GetDirectString(element, keyProperty);
+            if (StringComparer.OrdinalIgnoreCase.Equals(key, keyValue))
+            {
+                return GetDirectString(element, valueProperty);
+            }
 
             foreach (var property in element.EnumerateObject())
             {
-                if (TryFind(property.Value, name, out value))
+                var result = FindKeyedValue(
+                    property.Value,
+                    keyProperty,
+                    keyValue,
+                    valueProperty);
+                if (result is not null)
                 {
-                    return true;
+                    return result;
                 }
             }
         }
@@ -30,109 +92,66 @@ internal static class JsonElementSearch
         {
             foreach (var item in element.EnumerateArray())
             {
-                if (TryFind(item, name, out value))
+                var result = FindKeyedValue(item, keyProperty, keyValue, valueProperty);
+                if (result is not null)
                 {
-                    return true;
+                    return result;
                 }
             }
         }
 
-        value = default;
-        return false;
-    }
-
-    public static string? FindString(JsonElement root, params string[] names)
-    {
-        foreach (var name in names)
-        {
-            if (!TryFind(root, name, out var value))
-            {
-                continue;
-            }
-
-            var result = ScalarToString(value);
-            if (!string.IsNullOrWhiteSpace(result))
-            {
-                return result.Trim();
-            }
-        }
-
         return null;
     }
 
-    public static IReadOnlyList<string> FindStrings(JsonElement root, params string[] names)
+    public static IEnumerable<string> EnumerateObjectKeys(JsonElement element)
     {
-        foreach (var name in names)
+        if (element.ValueKind != JsonValueKind.Object)
         {
-            if (!TryFind(root, name, out var value))
-            {
-                continue;
-            }
-
-            var values = FlattenStrings(value)
-                .Where(static item => !string.IsNullOrWhiteSpace(item))
-                .Select(static item => item.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(static item => item, StringComparer.OrdinalIgnoreCase)
-                .ToArray();
-            if (values.Length > 0)
-            {
-                return values;
-            }
+            yield break;
         }
 
-        return [];
+        foreach (var property in element.EnumerateObject())
+        {
+            yield return property.Name;
+            foreach (var nested in EnumerateObjectKeys(property.Value))
+            {
+                yield return nested;
+            }
+        }
     }
 
-    public static int? FindResolution(JsonElement root, params string[] names)
+    public static IEnumerable<JsonElement> FindPropertyValues(
+        JsonElement element,
+        string propertyName)
     {
-        var raw = FindString(root, names);
-        if (raw is null)
+        if (element.ValueKind == JsonValueKind.Object)
         {
-            return null;
-        }
+            foreach (var property in element.EnumerateObject())
+            {
+                if (property.Name.Equals(propertyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    yield return property.Value;
+                }
 
-        var normalized = raw.Trim().ToUpperInvariant();
-        if (normalized.EndsWith('K') &&
-            double.TryParse(normalized[..^1], NumberStyles.Float, CultureInfo.InvariantCulture, out var k))
+                foreach (var nested in FindPropertyValues(property.Value, propertyName))
+                {
+                    yield return nested;
+                }
+            }
+        }
+        else if (element.ValueKind == JsonValueKind.Array)
         {
-            return checked((int)(k * 1024));
+            foreach (var item in element.EnumerateArray())
+            {
+                foreach (var nested in FindPropertyValues(item, propertyName))
+                {
+                    yield return nested;
+                }
+            }
         }
-
-        var digits = new string(normalized.Where(char.IsDigit).ToArray());
-        return int.TryParse(digits, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)
-            ? value
-            : null;
     }
 
-    public static double? FindDouble(JsonElement root, params string[] names)
-    {
-        foreach (var name in names)
-        {
-            if (!TryFind(root, name, out var value))
-            {
-                continue;
-            }
-
-            if (value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var number))
-            {
-                return number;
-            }
-
-            if (double.TryParse(
-                    ScalarToString(value),
-                    NumberStyles.Float,
-                    CultureInfo.InvariantCulture,
-                    out number))
-            {
-                return number;
-            }
-        }
-
-        return null;
-    }
-
-    private static IEnumerable<string> FlattenStrings(JsonElement value)
+    public static IEnumerable<string?> FlattenStrings(JsonElement value)
     {
         switch (value.ValueKind)
         {
@@ -147,7 +166,7 @@ internal static class JsonElementSearch
 
                 break;
             case JsonValueKind.Object:
-                var preferred = FindString(value, "name", "value", "label", "tag");
+                var preferred = GetDirectString(value, "name", "value", "label", "tag");
                 if (preferred is not null)
                 {
                     yield return preferred;
@@ -155,17 +174,12 @@ internal static class JsonElementSearch
 
                 break;
             default:
-                var scalar = ScalarToString(value);
-                if (scalar is not null)
-                {
-                    yield return scalar;
-                }
-
+                yield return ScalarToString(value);
                 break;
         }
     }
 
-    private static string? ScalarToString(JsonElement value) =>
+    public static string? ScalarToString(JsonElement value) =>
         value.ValueKind switch
         {
             JsonValueKind.String => value.GetString(),

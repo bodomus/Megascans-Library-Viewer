@@ -20,6 +20,7 @@ public interface IAssetMetadataParser
 /// <summary>Provides transactional persistence and indexed browsing queries.</summary>
 public interface IAssetIndex
 {
+    bool RequiresNormalizationRescan { get; }
     Task InitializeAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<AssetSummary>> GetAssetsAsync(CancellationToken cancellationToken);
     Task<IndexUpdateResult> ReplaceLibraryAsync(

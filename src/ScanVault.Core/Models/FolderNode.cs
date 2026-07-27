@@ -5,5 +5,7 @@ public sealed class FolderNode(string name, string fullPath)
 {
     public string Name { get; } = name;
     public string FullPath { get; } = fullPath;
+    public int AssetCount { get; internal set; }
+    public string DisplayName => $"{Name} ({AssetCount})";
     public IList<FolderNode> Children { get; } = [];
 }

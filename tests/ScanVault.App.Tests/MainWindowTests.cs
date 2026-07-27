@@ -3,6 +3,7 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using Microsoft.Extensions.Logging.Abstractions;
 using ScanVault.App.Services;
 using ScanVault.App.ViewModels;
 using ScanVault.Core.Models;
@@ -26,7 +27,10 @@ public sealed class MainWindowTests
                 using var card = new AssetCardViewModel(
                     CreateAsset(),
                     new NullImageLoader(),
-                    static _ => Task.CompletedTask);
+                    new NullInteractions(),
+                    static _ => Task.CompletedTask,
+                    static _ => { },
+                    NullLogger<AssetCardViewModel>.Instance);
                 window = new()
                 {
                     DataContext = new WindowDataContext([card]),
@@ -86,7 +90,7 @@ public sealed class MainWindowTests
         new(
             "xaml-binding",
             "XAML Binding Test",
-            "surface",
+            "Surface",
             @"C:\fixtures\asset",
             @"C:\fixtures\asset\xaml-binding.json",
             null,
@@ -101,7 +105,10 @@ public sealed class MainWindowTests
             [],
             DateTimeOffset.UnixEpoch);
 
-    private sealed record WindowDataContext(IReadOnlyList<AssetCardViewModel> Assets);
+    private sealed record WindowDataContext(IReadOnlyList<AssetCardViewModel> Assets)
+    {
+        public IReadOnlyList<AssetSortOption> SortOptions { get; } = [];
+    }
 
     private sealed class NullImageLoader : IImageLoader
     {
@@ -110,5 +117,12 @@ public sealed class MainWindowTests
             int decodePixelWidth,
             CancellationToken cancellationToken) =>
             Task.FromResult<ImageSource?>(null);
+    }
+
+    private sealed class NullInteractions : IAssetInteractionService
+    {
+        public void CopyText(string text) { }
+
+        public void OpenFolder(string folderPath) { }
     }
 }

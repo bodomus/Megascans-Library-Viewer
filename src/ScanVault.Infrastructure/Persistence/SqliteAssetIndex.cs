@@ -12,7 +12,8 @@ public sealed class SqliteAssetIndex(
     ScanVaultPaths paths,
     ILogger<SqliteAssetIndex> logger) : IAssetIndex
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
+    public const int CurrentNormalizationVersion = 2;
     private static readonly bool ProviderInitialized = InitializeProvider();
 
     private readonly string connectionString = new SqliteConnectionStringBuilder
@@ -24,90 +25,55 @@ public sealed class SqliteAssetIndex(
         Pooling = false
     }.ToString();
 
+    public bool RequiresNormalizationRescan { get; private set; }
+
     public async Task InitializeAsync(CancellationToken cancellationToken)
     {
+        _ = ProviderInitialized;
         var directory = Path.GetDirectoryName(paths.DatabasePath)
             ?? throw new InvalidOperationException("Database path has no parent directory.");
         Directory.CreateDirectory(directory);
 
         await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
+        await ExecuteAsync(
+            connection,
+            """
             PRAGMA journal_mode = WAL;
             PRAGMA synchronous = NORMAL;
             PRAGMA foreign_keys = ON;
+            """,
+            cancellationToken).ConfigureAwait(false);
 
-            CREATE TABLE IF NOT EXISTS schema_info (
-                version INTEGER NOT NULL
-            );
-            INSERT INTO schema_info(version)
-            SELECT 1
-            WHERE NOT EXISTS (SELECT 1 FROM schema_info);
-
-            CREATE TABLE IF NOT EXISTS assets (
-                id TEXT PRIMARY KEY COLLATE NOCASE,
-                library_root TEXT NOT NULL,
-                name TEXT NOT NULL,
-                asset_type TEXT NOT NULL,
-                asset_folder_path TEXT NOT NULL,
-                json_path TEXT NOT NULL UNIQUE,
-                thumbnail_path TEXT NULL,
-                preview_path TEXT NULL,
-                biome TEXT NULL,
-                region TEXT NULL,
-                physical_size TEXT NULL,
-                max_resolution INTEGER NULL,
-                texel_density REAL NULL,
-                average_color TEXT NULL,
-                categories_json TEXT NOT NULL,
-                tags_json TEXT NOT NULL,
-                last_write_time_utc TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS tags (
-                tag_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                kind INTEGER NOT NULL,
-                value TEXT NOT NULL COLLATE NOCASE,
-                UNIQUE(kind, value)
-            );
-
-            CREATE TABLE IF NOT EXISTS asset_tags (
-                asset_id TEXT NOT NULL COLLATE NOCASE,
-                tag_id INTEGER NOT NULL,
-                PRIMARY KEY(asset_id, tag_id),
-                FOREIGN KEY(asset_id) REFERENCES assets(id) ON DELETE CASCADE,
-                FOREIGN KEY(tag_id) REFERENCES tags(tag_id) ON DELETE CASCADE
-            );
-
-            CREATE TABLE IF NOT EXISTS scan_state (
-                singleton_id INTEGER PRIMARY KEY CHECK(singleton_id = 1),
-                library_root TEXT NOT NULL,
-                completed_at_utc TEXT NOT NULL,
-                result_json TEXT NOT NULL
-            );
-
-            CREATE INDEX IF NOT EXISTS ix_assets_library_root ON assets(library_root);
-            CREATE INDEX IF NOT EXISTS ix_assets_folder ON assets(asset_folder_path);
-            CREATE INDEX IF NOT EXISTS ix_assets_name ON assets(name COLLATE NOCASE);
-            CREATE INDEX IF NOT EXISTS ix_assets_type ON assets(asset_type COLLATE NOCASE);
-            CREATE INDEX IF NOT EXISTS ix_assets_biome ON assets(biome COLLATE NOCASE);
-            CREATE INDEX IF NOT EXISTS ix_assets_region ON assets(region COLLATE NOCASE);
-            CREATE INDEX IF NOT EXISTS ix_asset_tags_tag ON asset_tags(tag_id);
-            """;
-        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-
-        await using var versionCommand = connection.CreateCommand();
-        versionCommand.CommandText = "SELECT version FROM schema_info LIMIT 1;";
-        var version = Convert.ToInt32(
-            await versionCommand.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false),
-            CultureInfo.InvariantCulture);
-        if (version != CurrentSchemaVersion)
+        if (!await TableExistsAsync(connection, "schema_info", cancellationToken)
+                .ConfigureAwait(false))
         {
-            throw new InvalidOperationException(
-                $"Unsupported ScanVault schema version {version}; expected {CurrentSchemaVersion}.");
+            await CreateSchemaAsync(connection, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            var version = await ReadIntAsync(
+                    connection,
+                    "SELECT version FROM schema_info LIMIT 1;",
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (version == 1)
+            {
+                await MigrateVersionOneAsync(connection, cancellationToken).ConfigureAwait(false);
+            }
+            else if (version != CurrentSchemaVersion)
+            {
+                throw new InvalidOperationException(
+                    $"Unsupported ScanVault schema version {version}; expected {CurrentSchemaVersion}.");
+            }
         }
 
-        InfrastructureLog.IndexReady(logger, paths.DatabasePath, version);
+        var normalizationVersion = await ReadIntAsync(
+                connection,
+                "SELECT normalization_version FROM schema_info LIMIT 1;",
+                cancellationToken)
+            .ConfigureAwait(false);
+        RequiresNormalizationRescan = normalizationVersion < CurrentNormalizationVersion;
+        InfrastructureLog.IndexReady(logger, paths.DatabasePath, CurrentSchemaVersion);
     }
 
     public async Task<IReadOnlyList<AssetSummary>> GetAssetsAsync(
@@ -117,10 +83,10 @@ public sealed class SqliteAssetIndex(
         await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, name, asset_type, asset_folder_path, json_path,
+            SELECT id, name, asset_type, raw_asset_type, asset_folder_path, json_path,
                    thumbnail_path, preview_path, biome, region, physical_size,
-                   max_resolution, texel_density, average_color, categories_json,
-                   tags_json, last_write_time_utc
+                   max_resolution, resolution_width, resolution_height, texel_density,
+                   average_color, categories_json, tags_json, last_write_time_utc
             FROM assets
             ORDER BY name COLLATE NOCASE, id COLLATE NOCASE;
             """;
@@ -130,28 +96,42 @@ public sealed class SqliteAssetIndex(
             .ConfigureAwait(false);
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
-            var categories = JsonSerializer.Deserialize<string[]>(reader.GetString(13)) ?? [];
-            var tags = JsonSerializer.Deserialize<AssetTag[]>(reader.GetString(14)) ?? [];
-            assets.Add(new(
+            var categories = JsonSerializer.Deserialize<string[]>(reader.GetString(16)) ?? [];
+            var tags = JsonSerializer.Deserialize<AssetTag[]>(reader.GetString(17)) ?? [];
+            ImageResolution? resolution = null;
+            if (!reader.IsDBNull(12) && !reader.IsDBNull(13))
+            {
+                resolution = new(reader.GetInt32(12), reader.GetInt32(13));
+            }
+            else if (!reader.IsDBNull(11) && reader.GetInt32(11) > 0)
+            {
+                var legacy = reader.GetInt32(11);
+                resolution = new(legacy, legacy);
+            }
+
+            assets.Add(new AssetSummary(
                 reader.GetString(0),
                 reader.GetString(1),
                 reader.GetString(2),
-                reader.GetString(3),
                 reader.GetString(4),
-                reader.IsDBNull(5) ? null : reader.GetString(5),
+                reader.GetString(5),
                 reader.IsDBNull(6) ? null : reader.GetString(6),
                 reader.IsDBNull(7) ? null : reader.GetString(7),
                 reader.IsDBNull(8) ? null : reader.GetString(8),
                 reader.IsDBNull(9) ? null : reader.GetString(9),
-                reader.IsDBNull(10) ? null : reader.GetInt32(10),
-                reader.IsDBNull(11) ? null : reader.GetDouble(11),
-                reader.IsDBNull(12) ? null : reader.GetString(12),
+                reader.IsDBNull(10) ? null : reader.GetString(10),
+                resolution,
+                reader.IsDBNull(14) ? null : reader.GetDouble(14),
+                reader.IsDBNull(15) ? null : reader.GetString(15),
                 categories,
                 tags,
                 DateTimeOffset.Parse(
-                    reader.GetString(15),
+                    reader.GetString(18),
                     CultureInfo.InvariantCulture,
-                    DateTimeStyles.RoundtripKind)));
+                    DateTimeStyles.RoundtripKind))
+            {
+                RawAssetType = reader.IsDBNull(3) ? null : reader.GetString(3)
+            });
         }
 
         return assets;
@@ -242,8 +222,17 @@ public sealed class SqliteAssetIndex(
             scanState.Parameters.AddWithValue("$result", JsonSerializer.Serialize(draftResult));
             await scanState.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
 
+            // The new parser becomes authoritative only in the same transaction that
+            // replaces every asset. Cancellation therefore leaves the old marker intact.
+            await ExecuteAsync(
+                connection,
+                transaction,
+                $"UPDATE schema_info SET normalization_version = {CurrentNormalizationVersion};",
+                cancellationToken).ConfigureAwait(false);
+
             cancellationToken.ThrowIfCancellationRequested();
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+            RequiresNormalizationRescan = false;
             return new(added, updated, removed);
         }
         catch
@@ -257,6 +246,114 @@ public sealed class SqliteAssetIndex(
                 InfrastructureLog.RollbackFailed(logger, rollbackException);
             }
 
+            throw;
+        }
+    }
+
+    private static async Task CreateSchemaAsync(
+        SqliteConnection connection,
+        CancellationToken cancellationToken)
+    {
+        await ExecuteAsync(
+            connection,
+            """
+            CREATE TABLE schema_info (
+                version INTEGER NOT NULL,
+                normalization_version INTEGER NOT NULL
+            );
+            INSERT INTO schema_info(version, normalization_version) VALUES (2, 2);
+
+            CREATE TABLE assets (
+                id TEXT PRIMARY KEY COLLATE NOCASE,
+                library_root TEXT NOT NULL,
+                name TEXT NOT NULL,
+                asset_type TEXT NOT NULL,
+                raw_asset_type TEXT NULL,
+                asset_folder_path TEXT NOT NULL,
+                json_path TEXT NOT NULL UNIQUE,
+                thumbnail_path TEXT NULL,
+                preview_path TEXT NULL,
+                biome TEXT NULL,
+                region TEXT NULL,
+                physical_size TEXT NULL,
+                max_resolution INTEGER NULL,
+                resolution_width INTEGER NULL,
+                resolution_height INTEGER NULL,
+                texel_density REAL NULL,
+                average_color TEXT NULL,
+                categories_json TEXT NOT NULL,
+                tags_json TEXT NOT NULL,
+                last_write_time_utc TEXT NOT NULL
+            );
+
+            CREATE TABLE tags (
+                tag_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kind INTEGER NOT NULL,
+                value TEXT NOT NULL COLLATE NOCASE,
+                UNIQUE(kind, value)
+            );
+
+            CREATE TABLE asset_tags (
+                asset_id TEXT NOT NULL COLLATE NOCASE,
+                tag_id INTEGER NOT NULL,
+                PRIMARY KEY(asset_id, tag_id),
+                FOREIGN KEY(asset_id) REFERENCES assets(id) ON DELETE CASCADE,
+                FOREIGN KEY(tag_id) REFERENCES tags(tag_id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE scan_state (
+                singleton_id INTEGER PRIMARY KEY CHECK(singleton_id = 1),
+                library_root TEXT NOT NULL,
+                completed_at_utc TEXT NOT NULL,
+                result_json TEXT NOT NULL
+            );
+
+            CREATE INDEX ix_assets_library_root ON assets(library_root);
+            CREATE INDEX ix_assets_folder ON assets(asset_folder_path);
+            CREATE INDEX ix_assets_name ON assets(name COLLATE NOCASE);
+            CREATE INDEX ix_assets_type ON assets(asset_type COLLATE NOCASE);
+            CREATE INDEX ix_assets_biome ON assets(biome COLLATE NOCASE);
+            CREATE INDEX ix_assets_region ON assets(region COLLATE NOCASE);
+            CREATE INDEX ix_asset_tags_tag ON asset_tags(tag_id);
+            """,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task MigrateVersionOneAsync(
+        SqliteConnection connection,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = (SqliteTransaction)await connection
+            .BeginTransactionAsync(cancellationToken)
+            .ConfigureAwait(false);
+        try
+        {
+            await ExecuteAsync(
+                connection,
+                transaction,
+                """
+                ALTER TABLE schema_info
+                    ADD COLUMN normalization_version INTEGER NOT NULL DEFAULT 1;
+                ALTER TABLE assets ADD COLUMN raw_asset_type TEXT NULL;
+                ALTER TABLE assets ADD COLUMN resolution_width INTEGER NULL;
+                ALTER TABLE assets ADD COLUMN resolution_height INTEGER NULL;
+                UPDATE assets
+                SET resolution_width = max_resolution,
+                    resolution_height = max_resolution
+                WHERE max_resolution IS NOT NULL AND max_resolution > 0;
+                UPDATE schema_info
+                SET version = 2,
+                    normalization_version = CASE
+                        WHEN EXISTS (SELECT 1 FROM assets) THEN 1
+                        ELSE 2
+                    END;
+                """,
+                cancellationToken).ConfigureAwait(false);
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None).ConfigureAwait(false);
             throw;
         }
     }
@@ -303,18 +400,20 @@ public sealed class SqliteAssetIndex(
         command.Transaction = transaction;
         command.CommandText = """
             INSERT INTO assets(
-                id, library_root, name, asset_type, asset_folder_path, json_path,
-                thumbnail_path, preview_path, biome, region, physical_size,
-                max_resolution, texel_density, average_color, categories_json,
-                tags_json, last_write_time_utc)
+                id, library_root, name, asset_type, raw_asset_type,
+                asset_folder_path, json_path, thumbnail_path, preview_path,
+                biome, region, physical_size, max_resolution,
+                resolution_width, resolution_height, texel_density, average_color,
+                categories_json, tags_json, last_write_time_utc)
             VALUES(
-                $id, $root, $name, $type, $folder, $json, $thumb, $preview,
-                $biome, $region, $size, $resolution, $texel, $color,
-                $categories, $tags, $lastWrite)
+                $id, $root, $name, $type, $rawType, $folder, $json, $thumb, $preview,
+                $biome, $region, $size, $resolution, $resolutionWidth,
+                $resolutionHeight, $texel, $color, $categories, $tags, $lastWrite)
             ON CONFLICT(id) DO UPDATE SET
                 library_root = excluded.library_root,
                 name = excluded.name,
                 asset_type = excluded.asset_type,
+                raw_asset_type = excluded.raw_asset_type,
                 asset_folder_path = excluded.asset_folder_path,
                 json_path = excluded.json_path,
                 thumbnail_path = excluded.thumbnail_path,
@@ -323,6 +422,8 @@ public sealed class SqliteAssetIndex(
                 region = excluded.region,
                 physical_size = excluded.physical_size,
                 max_resolution = excluded.max_resolution,
+                resolution_width = excluded.resolution_width,
+                resolution_height = excluded.resolution_height,
                 texel_density = excluded.texel_density,
                 average_color = excluded.average_color,
                 categories_json = excluded.categories_json,
@@ -333,6 +434,7 @@ public sealed class SqliteAssetIndex(
         Add(command, "$root", libraryRoot);
         Add(command, "$name", asset.Name);
         Add(command, "$type", asset.AssetType);
+        Add(command, "$rawType", asset.RawAssetType);
         Add(command, "$folder", asset.AssetFolderPath);
         Add(command, "$json", asset.JsonPath);
         Add(command, "$thumb", asset.ThumbnailPath);
@@ -340,7 +442,9 @@ public sealed class SqliteAssetIndex(
         Add(command, "$biome", asset.Biome);
         Add(command, "$region", asset.Region);
         Add(command, "$size", asset.PhysicalSize);
-        Add(command, "$resolution", asset.MaxResolution);
+        Add(command, "$resolution", asset.MaxResolution?.MaxDimension);
+        Add(command, "$resolutionWidth", asset.MaxResolution?.Width);
+        Add(command, "$resolutionHeight", asset.MaxResolution?.Height);
         Add(command, "$texel", asset.TexelDensity);
         Add(command, "$color", asset.AverageColor);
         Add(command, "$categories", JsonSerializer.Serialize(asset.Categories));
@@ -384,6 +488,41 @@ public sealed class SqliteAssetIndex(
 
     private static void Add(SqliteCommand command, string name, object? value) =>
         command.Parameters.AddWithValue(name, value ?? DBNull.Value);
+
+    private static async Task<bool> TableExistsAsync(
+        SqliteConnection connection,
+        string tableName,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = $name;";
+        command.Parameters.AddWithValue("$name", tableName);
+        return Convert.ToInt32(
+                   await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false),
+                   CultureInfo.InvariantCulture) > 0;
+    }
+
+    private static async Task<int> ReadIntAsync(
+        SqliteConnection connection,
+        string sql,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        return Convert.ToInt32(
+            await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false),
+            CultureInfo.InvariantCulture);
+    }
+
+    private static async Task ExecuteAsync(
+        SqliteConnection connection,
+        string sql,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
 
     private static async Task ExecuteAsync(
         SqliteConnection connection,

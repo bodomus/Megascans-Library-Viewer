@@ -15,4 +15,11 @@ internal static partial class ApplicationLog
 
     [LoggerMessage(2003, LogLevel.Error, "Scan command failed")]
     public static partial void ScanCommandFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(2004, LogLevel.Warning, "Asset action {Action} failed for {AssetId}")]
+    public static partial void AssetActionFailed(
+        ILogger logger,
+        string action,
+        string assetId,
+        Exception exception);
 }

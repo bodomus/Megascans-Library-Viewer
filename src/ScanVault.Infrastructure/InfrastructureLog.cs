@@ -52,6 +52,13 @@ internal static partial class InfrastructureLog
         string libraryRoot,
         Exception exception);
 
+    [LoggerMessage(1009, LogLevel.Warning,
+        "Ignoring malformed resolution {Resolution} in {JsonPath}")]
+    public static partial void MalformedResolution(
+        ILogger logger,
+        string jsonPath,
+        string resolution);
+
     [LoggerMessage(1101, LogLevel.Information,
         "SQLite index ready at {DatabasePath}, schema version {SchemaVersion}")]
     public static partial void IndexReady(

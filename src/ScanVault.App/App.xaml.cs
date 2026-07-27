@@ -28,6 +28,7 @@ public partial class App : Application
                 {
                     services.AddScanVaultInfrastructure();
                     services.AddSingleton<IImageLoader, BoundedImageLoader>();
+                    services.AddSingleton<IAssetInteractionService, DesktopAssetInteractionService>();
                     services.AddSingleton<MainViewModel>();
                     services.AddTransient<MainWindow>();
                 })

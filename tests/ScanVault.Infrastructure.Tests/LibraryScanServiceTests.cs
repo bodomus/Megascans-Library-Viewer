@@ -58,7 +58,7 @@ public sealed class LibraryScanServiceTests
         new(
             id,
             $"Asset {id}",
-            "surface",
+            "Surface",
             Path.GetDirectoryName(jsonPath)!,
             jsonPath,
             null,
@@ -95,6 +95,7 @@ public sealed class LibraryScanServiceTests
 
     private sealed class RecordingIndex(IndexUpdateResult update) : IAssetIndex
     {
+        public bool RequiresNormalizationRescan => false;
         public IReadOnlyList<AssetSummary> CommittedAssets { get; private set; } = [];
 
         public Task InitializeAsync(CancellationToken cancellationToken) => Task.CompletedTask;

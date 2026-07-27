@@ -27,15 +27,18 @@ public sealed record AssetSummary(
     string? Biome,
     string? Region,
     string? PhysicalSize,
-    int? MaxResolution,
+    ImageResolution? MaxResolution,
     double? TexelDensity,
     string? AverageColor,
     IReadOnlyList<string> Categories,
     IReadOnlyList<AssetTag> Tags,
-    DateTimeOffset LastWriteTimeUtc);
+    DateTimeOffset LastWriteTimeUtc)
+{
+    public string? RawAssetType { get; init; }
+}
 
 /// <summary>Persisted per-user application settings.</summary>
-public sealed record LibrarySettings(string LibraryRoot)
+public sealed record LibrarySettings(string LibraryRoot, AssetSortMode SortMode = AssetSortMode.NameAscending)
 {
     public static LibrarySettings Empty { get; } = new(string.Empty);
 }
