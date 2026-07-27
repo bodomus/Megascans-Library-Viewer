@@ -57,6 +57,8 @@ public sealed class ViewModelTests : IDisposable
         using var viewModel = CreateMainViewModel(assets, settingsStore, interactions);
 
         await viewModel.InitializeAsync(CancellationToken.None);
+        Assert.Equal("9.8.7", viewModel.ProductVersion);
+        Assert.Equal("ScanVault \u2014 Megascans Library Viewer 9.8.7", viewModel.WindowTitle);
         var rootNode = Assert.Single(viewModel.Folders);
         Assert.Equal(3, rootNode.AssetCount);
         var natureNode = Assert.Single(rootNode.Children, static node => node.Name == "Nature");
@@ -128,6 +130,14 @@ public sealed class ViewModelTests : IDisposable
             settingsStore,
             new NullImageLoader(),
             interactions,
+            ApplicationBuildInfo.Create(
+                "9.8.7",
+                "9.8.7-test+abcdef1",
+                "abcdef1",
+                "Test",
+                "Test runtime",
+                "Test OS",
+                "X64"),
             NullLoggerFactory.Instance,
             NullLogger<MainViewModel>.Instance);
 

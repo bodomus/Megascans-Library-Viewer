@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="clr-namespace:ScanVault.App.Controls"
         xmlns:models="clr-namespace:ScanVault.Core.Models;assembly=ScanVault.Core"
-        Title="ScanVault — Megascans Library Viewer"
+        Title="{Binding WindowTitle}"
         Width="1280" Height="800" MinWidth="900" MinHeight="600"
         Background="{StaticResource WindowBackground}"
         Foreground="{StaticResource TextPrimary}">

@@ -35,6 +35,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ISettingsStore settingsStore,
         IImageLoader imageLoader,
         IAssetInteractionService interactions,
+        ApplicationBuildInfo buildInfo,
         ILoggerFactory loggerFactory,
         ILogger<MainViewModel> logger)
     {
@@ -45,6 +46,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         this.logger = logger;
         cardLogger = loggerFactory.CreateLogger<AssetCardViewModel>();
         Settings = new(settingsStore);
+        WindowTitle = buildInfo.WindowTitle;
+        ProductVersion = buildInfo.ProductVersion;
         Preview = new(imageLoader);
         Settings.PropertyChanged += OnSettingsPropertyChanged;
 
@@ -82,6 +85,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public RelayCommand ClosePreviewCommand { get; }
     public AsyncRelayCommand OpenSelectedPreviewCommand { get; }
     public RelayCommand CopySelectedFolderCommand { get; }
+    public string WindowTitle { get; }
+    public string ProductVersion { get; }
 
     public string SearchText
     {

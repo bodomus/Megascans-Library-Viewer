@@ -45,6 +45,7 @@ public sealed class MainWindowTests
 
                 var listBox = Assert.IsType<ListBox>(FindVisualChild<ListBox>(window));
                 Assert.NotNull(listBox.ItemContainerGenerator.ContainerFromIndex(0));
+                Assert.Equal("ScanVault Test 9.8.7", window.Title);
             }
             catch (Exception exception)
             {
@@ -108,6 +109,8 @@ public sealed class MainWindowTests
     private sealed record WindowDataContext(IReadOnlyList<AssetCardViewModel> Assets)
     {
         public IReadOnlyList<AssetSortOption> SortOptions { get; } = [];
+
+        public string WindowTitle { get; } = "ScanVault Test 9.8.7";
     }
 
     private sealed class NullImageLoader : IImageLoader

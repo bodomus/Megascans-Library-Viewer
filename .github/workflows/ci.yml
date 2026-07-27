@@ -1,0 +1,71 @@
+name: ScanVault CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  validate:
+    name: Windows build and test
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up pinned .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Compute build metadata
+        shell: pwsh
+        run: |
+          $shortSha = $env:GITHUB_SHA.Substring(0, 7)
+          "SHORT_SHA=$shortSha" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Restore
+        run: dotnet restore ScanVault.sln
+
+      - name: Build Release
+        run: >-
+          dotnet build ScanVault.sln
+          --configuration Release
+          --no-restore
+          -p:VersionSuffix=ci.${{ github.run_number }}
+          -p:CommitSha=$env:SHORT_SHA
+          -p:ContinuousIntegrationBuild=true
+
+      - name: Test Release
+        run: >-
+          dotnet test ScanVault.sln
+          --configuration Release
+          --no-build
+          --logger trx
+          --results-directory TestResults
+
+      - name: Verify formatting
+        run: dotnet format ScanVault.sln --verify-no-changes --no-restore
+
+      - name: Verify whitespace
+        run: git diff --check
+
+      - name: Upload test diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-diagnostics-${{ github.run_number }}
+          path: '**/TestResults/**'
+          if-no-files-found: ignore
+          retention-days: 7

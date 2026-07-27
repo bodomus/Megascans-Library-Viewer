@@ -19,7 +19,7 @@ ScanVault is a Windows desktop viewer and local indexer for legacy Quixel Megasc
 ## Prerequisites
 
 - Windows 10/11;
-- .NET SDK 10.0.301 or compatible stable 10.0 feature band;
+- .NET SDK 10.0.302 or a compatible stable patch selected by `global.json`;
 - Windows Desktop Runtime 10.
 
 ## Build and test
@@ -46,7 +46,11 @@ These paths are outside both the repository and the scanned library. Existing ve
 
 ## Architecture
 
-`ScanVault.Core` owns models, contracts, and deterministic normalization/catalog policies. `ScanVault.Infrastructure` owns filesystem discovery, schema-aware JSON parsing, settings, scan orchestration, and SQLite. `ScanVault.App` owns WPF composition, views, view models, commands, virtualization, image presentation, clipboard, and Explorer interaction. See `Docs/architecture.md` and `Docs/index-format.md`.
+`ScanVault.Core` owns models, contracts, and deterministic normalization/catalog policies. `ScanVault.Infrastructure` owns filesystem discovery, schema-aware JSON parsing, settings, scan orchestration, and SQLite. `ScanVault.App` owns WPF composition, views, view models, commands, virtualization, image presentation, clipboard, and Explorer interaction. See `Docs/architecture.md`, `Docs/index-format.md`, and `Docs/versioning-and-ci.md`.
+
+## Version and CI
+
+The product version is defined once in `Directory.Build.props`. Local builds use a `dev` suffix; GitHub Actions injects a CI run suffix and short commit SHA without changing tracked files. CI validates every push and pull request on Windows and does not publish releases. The complete policy and recommended `master` protection are in `Docs/versioning-and-ci.md`.
 
 ## Repository workflow
 

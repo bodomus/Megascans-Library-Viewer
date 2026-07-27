@@ -4,8 +4,19 @@ namespace ScanVault.App;
 
 internal static partial class ApplicationLog
 {
-    [LoggerMessage(2001, LogLevel.Information, "Starting ScanVault")]
-    public static partial void Starting(ILogger logger);
+    [LoggerMessage(
+        2001,
+        LogLevel.Information,
+        "Starting ScanVault {ApplicationVersion}; informational {InformationalVersion}; commit {CommitSha}; configuration {BuildConfiguration}; runtime {RuntimeVersion}; OS {OperatingSystem}; architecture {ProcessArchitecture}")]
+    public static partial void Starting(
+        ILogger logger,
+        string applicationVersion,
+        string informationalVersion,
+        string commitSha,
+        string buildConfiguration,
+        string runtimeVersion,
+        string operatingSystem,
+        string processArchitecture);
 
     [LoggerMessage(2002, LogLevel.Warning, "Cannot load image {ImagePath}")]
     public static partial void ImageLoadFailed(

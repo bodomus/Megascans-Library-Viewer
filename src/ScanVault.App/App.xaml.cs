@@ -27,6 +27,7 @@ public partial class App : Application
                 .ConfigureServices(services =>
                 {
                     services.AddScanVaultInfrastructure();
+                    services.AddSingleton(ApplicationBuildInfo.FromAssembly(typeof(App).Assembly));
                     services.AddSingleton<IImageLoader, BoundedImageLoader>();
                     services.AddSingleton<IAssetInteractionService, DesktopAssetInteractionService>();
                     services.AddSingleton<MainViewModel>();
@@ -35,7 +36,16 @@ public partial class App : Application
                 .Build();
 
             var logger = host.Services.GetRequiredService<ILogger<App>>();
-            ApplicationLog.Starting(logger);
+            var buildInfo = host.Services.GetRequiredService<ApplicationBuildInfo>();
+            ApplicationLog.Starting(
+                logger,
+                buildInfo.ProductVersion,
+                buildInfo.InformationalVersion,
+                buildInfo.CommitSha,
+                buildInfo.BuildConfiguration,
+                buildInfo.RuntimeVersion,
+                buildInfo.OperatingSystem,
+                buildInfo.ProcessArchitecture);
             mainViewModel = host.Services.GetRequiredService<MainViewModel>();
             await mainViewModel.InitializeAsync(CancellationToken.None);
 

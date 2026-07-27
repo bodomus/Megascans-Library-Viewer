@@ -59,3 +59,13 @@ Hover popup behavior is owned by each asset card with a 425 ms delay and cancell
 ## Dependency injection
 
 `App.xaml.cs` creates the service provider, registers Infrastructure implementations, image loading, desktop asset interactions, view models, and windows, and disposes the provider during application shutdown. Long-running operations are owned/cancelled by view models rather than a global mutable service locator.
+
+## Build identity and startup diagnostics
+
+`Directory.Build.props` is the repository-wide version authority. It generates consistent product, assembly, file, and informational versions for all projects. `global.json` selects the stable SDK patch policy used both locally and in CI.
+
+At build time, CI supplies its run suffix and short commit SHA as MSBuild properties. It never writes a version source file. `ScanVault.App` reads only generated assembly attributes through immutable `ApplicationBuildInfo`; it never starts Git or performs filesystem work to discover build identity at runtime.
+
+The App composition root registers that build information once. `MainViewModel` exposes a compact product-version title without the SHA, while the structured startup event records product and informational versions, commit, configuration, runtime, OS, and process architecture. Missing optional metadata has explicit fallbacks and cannot prevent startup.
+
+The Windows GitHub Actions workflow validates restore, Release build, tests, formatting, and whitespace for pushes and pull requests. Release publishing, packaging, repository writes, and branch-setting mutations are outside this workflow. See `versioning-and-ci.md` for exact version semantics and branch-protection guidance.

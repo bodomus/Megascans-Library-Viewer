@@ -5,7 +5,24 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AnalysisLevel>latest-recommended</AnalysisLevel>
+
+    <!-- MLV-5: the single authoritative product-version source. -->
+    <VersionPrefix>0.2.0</VersionPrefix>
+    <VersionSuffix Condition="'$(VersionSuffix)' == ''">dev</VersionSuffix>
+    <Version>$(VersionPrefix)-$(VersionSuffix)</Version>
+    <AssemblyVersion>$(VersionPrefix).0</AssemblyVersion>
+    <FileVersion>$(VersionPrefix).0</FileVersion>
+    <InformationalVersion>$(Version)</InformationalVersion>
+    <InformationalVersion Condition="'$(CommitSha)' != ''">$(Version)+$(CommitSha)</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
   </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyMetadata Include="ProductVersion" Value="$(VersionPrefix)" />
+    <AssemblyMetadata Include="CommitSha" Value="$(CommitSha)" />
+    <AssemblyMetadata Include="BuildConfiguration" Value="$(Configuration)" />
+  </ItemGroup>
 </Project>
