@@ -134,7 +134,7 @@
                                     </Grid>
                                 </Button>
 
-                                <Popup IsOpen="{Binding IsHoverOpen}"
+                                <Popup IsOpen="{Binding IsHoverOpen, Mode=OneWay}"
                                        PlacementTarget="{Binding ElementName=CardRoot}"
                                        Placement="MousePoint" HorizontalOffset="12" VerticalOffset="12"
                                        AllowsTransparency="True" StaysOpen="True"
