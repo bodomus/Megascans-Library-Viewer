@@ -15,3 +15,4 @@ graphify-out/
 *.db-wal
 *.sqlite
 *.sqlite3
+**/megascan/

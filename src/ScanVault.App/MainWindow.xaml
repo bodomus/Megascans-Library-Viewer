@@ -58,6 +58,16 @@
                               SelectedItemChanged="OnFolderSelected"
                               Background="Transparent" BorderThickness="0"
                               Foreground="{StaticResource TextPrimary}">
+                        <TreeView.ItemContainerStyle>
+                            <Style TargetType="TreeViewItem">
+                                <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+                                <Style.Triggers>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter Property="Foreground" Value="#D9DEE5" />
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TreeView.ItemContainerStyle>
                         <TreeView.Resources>
                             <HierarchicalDataTemplate DataType="{x:Type models:FolderNode}"
                                                       ItemsSource="{Binding Children}">
@@ -80,7 +90,7 @@
                      VirtualizingPanel.VirtualizationMode="Recycling">
                 <ListBox.ItemsPanel>
                     <ItemsPanelTemplate>
-                        <controls:VirtualizingWrapPanel ItemWidth="190" ItemHeight="210" />
+                        <controls:VirtualizingWrapPanel ItemWidth="190" ItemHeight="230" />
                     </ItemsPanelTemplate>
                 </ListBox.ItemsPanel>
                 <ListBox.ItemContainerStyle>
