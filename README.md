@@ -14,7 +14,9 @@ ScanVault is a Windows desktop viewer and local indexer for legacy Quixel Megasc
 - virtualized thumbnail grid with asynchronous bounded image cache;
 - persistent single-card selection, delayed normalized hover details, and context actions;
 - keyboard navigation with `Enter` preview, `Esc` close, and list-scoped `Ctrl+C` folder copy;
-- existing-index load at startup with no automatic rescan.
+- existing-index load at startup with no automatic rescan;
+- compact About / Diagnostics report with stable clipboard output;
+- explicit read-before-write index compatibility states that preserve newer or corrupted databases.
 
 ## Prerequisites
 
@@ -42,11 +44,11 @@ dotnet run --project src/ScanVault.App/ScanVault.App.csproj
 - SQLite index: `%LocalAppData%\ScanVault\scanvault.db`;
 - thumbnail cache location reserved at `%LocalAppData%\ScanVault\thumbnails`.
 
-These paths are outside both the repository and the scanned library. Existing version 1 databases migrate automatically; a populated older index remains usable and displays a concise request to run Rescan so source metadata can be normalized.
+These paths are outside both the repository and the scanned library. Existing version 1 databases migrate automatically; a populated older index remains usable and displays a concise request to run Rescan so source metadata can be normalized. Startup inspects existing databases read-only before any write. Newer unsupported or corrupted indexes are preserved and unsafe Rescan is disabled; see `Docs/diagnostics.md` for recovery guidance.
 
 ## Architecture
 
-`ScanVault.Core` owns models, contracts, and deterministic normalization/catalog policies. `ScanVault.Infrastructure` owns filesystem discovery, schema-aware JSON parsing, settings, scan orchestration, and SQLite. `ScanVault.App` owns WPF composition, views, view models, commands, virtualization, image presentation, clipboard, and Explorer interaction. See `Docs/architecture.md`, `Docs/index-format.md`, and `Docs/versioning-and-ci.md`.
+`ScanVault.Core` owns models, contracts, and deterministic normalization/catalog policies. `ScanVault.Infrastructure` owns filesystem discovery, schema-aware JSON parsing, settings, scan orchestration, and SQLite. `ScanVault.App` owns WPF composition, views, view models, commands, virtualization, image presentation, clipboard, and Explorer interaction. See `Docs/architecture.md`, `Docs/index-format.md`, `Docs/diagnostics.md`, and `Docs/versioning-and-ci.md`.
 
 ## Version and CI
 

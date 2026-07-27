@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using Microsoft.Extensions.Logging;
@@ -17,8 +18,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly ILibraryScanService scanService;
     private readonly IImageLoader imageLoader;
     private readonly IAssetInteractionService interactions;
+    private readonly DiagnosticsService diagnosticsService;
     private readonly ILogger<MainViewModel> logger;
     private readonly ILogger<AssetCardViewModel> cardLogger;
+    private readonly ILogger<DiagnosticsViewModel> diagnosticsLogger;
     private IReadOnlyList<AssetSummary> allAssets = [];
     private CancellationTokenSource? scanCancellation;
     private string searchText = string.Empty;
@@ -28,6 +31,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private int indexedAssetCount;
     private AssetSortMode sortMode = AssetSortMode.NameAscending;
     private AssetCardViewModel? selectedCard;
+    private ScanAttemptStatus lastScanStatus;
+    private TimeSpan? lastScanDuration;
+    private string? lastScanResult;
 
     public MainViewModel(
         IAssetIndex index,
@@ -36,6 +42,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         IImageLoader imageLoader,
         IAssetInteractionService interactions,
         ApplicationBuildInfo buildInfo,
+        DiagnosticsService diagnosticsService,
         ILoggerFactory loggerFactory,
         ILogger<MainViewModel> logger)
     {
@@ -43,8 +50,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         this.scanService = scanService;
         this.imageLoader = imageLoader;
         this.interactions = interactions;
+        this.diagnosticsService = diagnosticsService;
         this.logger = logger;
         cardLogger = loggerFactory.CreateLogger<AssetCardViewModel>();
+        diagnosticsLogger = loggerFactory.CreateLogger<DiagnosticsViewModel>();
         Settings = new(settingsStore);
         WindowTitle = buildInfo.WindowTitle;
         ProductVersion = buildInfo.ProductVersion;
@@ -52,7 +61,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Settings.PropertyChanged += OnSettingsPropertyChanged;
 
         SaveSettingsCommand = new AsyncRelayCommand(SaveSettingsAsync, () => Settings.IsDirty);
-        RescanCommand = new AsyncRelayCommand(RescanAsync, () => Settings.CanRescan && !IsScanning);
+        RescanCommand = new AsyncRelayCommand(
+            RescanAsync,
+            () => Settings.CanRescan && !IsScanning && index.Compatibility.CanWrite);
         CancelScanCommand = new RelayCommand(CancelScan, () => IsScanning);
         ClosePreviewCommand = new RelayCommand(Preview.Close, () => Preview.IsOpen);
         OpenSelectedPreviewCommand = new AsyncRelayCommand(
@@ -87,6 +98,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public RelayCommand CopySelectedFolderCommand { get; }
     public string WindowTitle { get; }
     public string ProductVersion { get; }
+    public ScanAttemptStatus LastScanStatus => lastScanStatus;
+    public TimeSpan? LastScanDuration => lastScanDuration;
+    public string? LastScanResult => lastScanResult;
 
     public string SearchText
     {
@@ -165,12 +179,43 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         SortMode = Settings.SortMode;
         allAssets = await index.GetAssetsAsync(cancellationToken);
         RebuildNavigation();
-        StatusText = index.RequiresNormalizationRescan
-            ? $"Loaded {allAssets.Count:N0} assets from an older index. Run Rescan to normalize metadata."
-            : allAssets.Count == 0
-                ? "No assets indexed. Configure a library root and run Rescan."
-                : $"Loaded {allAssets.Count:N0} indexed assets.";
+        StatusText = DescribeStartupStatus(index.Compatibility, allAssets.Count);
+        NotifyCommandStates();
     }
+
+    public async Task<DiagnosticsViewModel> CreateDiagnosticsViewModelAsync(
+        CancellationToken cancellationToken)
+    {
+        var snapshot = await diagnosticsService.CaptureAsync(
+            new(
+                Settings.LibraryRoot,
+                lastScanStatus,
+                lastScanDuration,
+                lastScanResult,
+                SortMode.ToString(),
+                SelectedFolderPath),
+            cancellationToken);
+        return new(snapshot, interactions, diagnosticsLogger);
+    }
+
+    private static string DescribeStartupStatus(
+        IndexCompatibilityInfo compatibility,
+        int assetCount) => compatibility.State switch
+        {
+            IndexCompatibilityState.RequiresRescan =>
+                $"Loaded {assetCount:N0} assets from an older index. Run Rescan to normalize metadata.",
+            IndexCompatibilityState.NewerVersionUnsupported =>
+                "Index was created by a newer ScanVault version and cannot be opened safely. See Diagnostics.",
+            IndexCompatibilityState.Corrupted =>
+                "Index could not be read. The database file was preserved. See Diagnostics.",
+            IndexCompatibilityState.Missing =>
+                "No index exists. Configure a library root and run Rescan.",
+            IndexCompatibilityState.RequiresMigration =>
+                "Index migration is required before the catalog can be opened.",
+            _ when assetCount == 0 =>
+                "No assets indexed. Configure a library root and run Rescan.",
+            _ => $"Loaded {assetCount:N0} indexed assets."
+        };
 
     public void SelectFolder(FolderNode? folder) =>
         SelectedFolderPath = folder?.FullPath;
@@ -202,6 +247,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private async Task RescanAsync(CancellationToken commandCancellation)
     {
+        if (!index.Compatibility.CanWrite)
+        {
+            StatusText = index.Compatibility.Guidance;
+            return;
+        }
+
         if (!Settings.CanRescan)
         {
             StatusText = Settings.IsDirty
@@ -215,6 +266,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         var cancellationToken = scanCancellation.Token;
         IsScanning = true;
         StatusText = "Scanning library…";
+        var attemptStopwatch = Stopwatch.StartNew();
 
         var progress = new Progress<ScanProgress>(scanProgress =>
         {
@@ -236,6 +288,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             allAssets = await index.GetAssetsAsync(cancellationToken);
             SelectedFolderPath = null;
             RebuildNavigation();
+            attemptStopwatch.Stop();
+            lastScanStatus = ScanAttemptStatus.Succeeded;
+            lastScanDuration = result.Elapsed;
+            lastScanResult = PersistedScanSummary(result);
             StatusText =
                 $"Scan complete: +{result.AddedAssets}, ~{result.UpdatedAssets}, -{result.RemovedAssets}; " +
                 $"{result.SkippedMalformedFiles} malformed, {result.InaccessibleDirectories.Count} inaccessible, " +
@@ -243,18 +299,32 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
         catch (OperationCanceledException)
         {
+            attemptStopwatch.Stop();
+            lastScanStatus = ScanAttemptStatus.Cancelled;
+            lastScanDuration = attemptStopwatch.Elapsed;
+            lastScanResult = "Cancelled; the previous index remains available";
             StatusText = "Scan cancelled. The previous index remains available.";
         }
         catch (Exception exception)
         {
+            attemptStopwatch.Stop();
+            lastScanStatus = ScanAttemptStatus.Failed;
+            lastScanDuration = attemptStopwatch.Elapsed;
+            lastScanResult = "Failed; see application logs for technical details";
             ApplicationLog.ScanCommandFailed(logger, exception);
             StatusText = $"Scan failed: {exception.Message}";
         }
         finally
         {
             IsScanning = false;
+            NotifyCommandStates();
         }
     }
+
+    private static string PersistedScanSummary(ScanResult result) =>
+        $"+{result.AddedAssets}, ~{result.UpdatedAssets}, -{result.RemovedAssets}; " +
+        $"{result.SkippedMalformedFiles + result.SkippedUnrelatedFiles + result.DuplicateGroups.Sum(group => group.SkippedCopyJsonPaths.Count)} skipped, " +
+        $"{result.InaccessibleDirectories.Count} inaccessible";
 
     private void CancelScan() => scanCancellation?.Cancel();
 

@@ -56,6 +56,13 @@ Hover popup behavior is owned by each asset card with a 425 ms delay and cancell
 - shell launch uses structured `ProcessStartInfo` arguments rather than command concatenation;
 - errors are logged structurally and the UI shows concise messages.
 
+## Diagnostics and compatibility flow
+
+At startup, `SqliteAssetIndex` opens an existing database read-only and derives an explicit compatibility value before any writable connection is allowed. A supported v1 structural migration is transactional. An older normalization marker leaves rows readable and requests an explicit Rescan. Missing indexes remain absent until Rescan, while newer unsupported or corrupted files block the write command and are preserved.
+
+`Core` owns the compatibility, persisted-scan, and diagnostics records plus deterministic text formatting. `Infrastructure` owns SQLite validation, the write gate, migrations, and atomic scan metadata. `App` combines those facts with generated build identity and current view-model state. `DiagnosticsWindow` binds immutable label/value rows, and clipboard failure is handled by `DiagnosticsViewModel`; code-behind only opens or closes windows.
+
+Successful replacement commits catalog rows, the current normalization marker, and last-scan counters in one transaction. Diagnostics can therefore distinguish live failed/cancelled attempts from the last successful persisted scan without coupling history storage to WPF.
 ## Dependency injection
 
 `App.xaml.cs` creates the service provider, registers Infrastructure implementations, image loading, desktop asset interactions, view models, and windows, and disposes the provider during application shutdown. Long-running operations are owned/cancelled by view models rather than a global mutable service locator.

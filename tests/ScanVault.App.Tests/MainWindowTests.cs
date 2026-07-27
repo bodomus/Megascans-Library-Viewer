@@ -13,13 +13,14 @@ namespace ScanVault.App.Tests;
 public sealed class MainWindowTests
 {
     [Fact]
-    public void RealizesAssetCardWithViewModelOwnedHoverState()
+    public void RealizesMainAndDiagnosticsWindowsWithExpectedBindings()
     {
         Exception? failure = null;
         var thread = new Thread(() =>
         {
             global::ScanVault.App.App? application = null;
             global::ScanVault.App.MainWindow? window = null;
+            global::ScanVault.App.DiagnosticsWindow? diagnosticsWindow = null;
             try
             {
                 application = new();
@@ -46,6 +47,25 @@ public sealed class MainWindowTests
                 var listBox = Assert.IsType<ListBox>(FindVisualChild<ListBox>(window));
                 Assert.NotNull(listBox.ItemContainerGenerator.ContainerFromIndex(0));
                 Assert.Equal("ScanVault Test 9.8.7", window.Title);
+
+                diagnosticsWindow = new()
+                {
+                    DataContext = new DiagnosticsViewModel(
+                        CreateDiagnosticsSnapshot(),
+                        new NullInteractions(),
+                        NullLogger<DiagnosticsViewModel>.Instance),
+                    ShowActivated = false,
+                    ShowInTaskbar = false,
+                    Left = -10_000,
+                    Top = -10_000
+                };
+                diagnosticsWindow.Show();
+                diagnosticsWindow.UpdateLayout();
+
+                var diagnosticsList = Assert.IsType<ListBox>(
+                    FindVisualChild<ListBox>(diagnosticsWindow));
+                Assert.Equal(23, diagnosticsList.Items.Count);
+                Assert.Equal("About / Diagnostics — ScanVault 9.8.7", diagnosticsWindow.Title);
             }
             catch (Exception exception)
             {
@@ -53,6 +73,7 @@ public sealed class MainWindowTests
             }
             finally
             {
+                diagnosticsWindow?.Close();
                 window?.Close();
                 application?.Shutdown();
             }
@@ -86,6 +107,28 @@ public sealed class MainWindowTests
 
         return null;
     }
+
+    private static DiagnosticsSnapshot CreateDiagnosticsSnapshot() => new(
+        "9.8.7",
+        "9.8.7-test+abcdef1",
+        "abcdef1",
+        "Test",
+        ".NET test runtime",
+        "Test OS",
+        "X64",
+        @"C:\Library",
+        17,
+        DateTimeOffset.UnixEpoch,
+        TimeSpan.FromSeconds(4),
+        ScanAttemptStatus.Succeeded,
+        "+17, ~0, -0",
+        @"C:\Data\scanvault.db",
+        @"C:\Data\thumbnails",
+        2,
+        2,
+        IndexCompatibilityState.Compatible,
+        false,
+        "Index is compatible.");
 
     private static AssetSummary CreateAsset() =>
         new(

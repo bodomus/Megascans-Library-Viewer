@@ -6,6 +6,7 @@ using ScanVault.App.Services;
 using ScanVault.App.ViewModels;
 using ScanVault.Core.Abstractions;
 using ScanVault.Core.Models;
+using ScanVault.Infrastructure.Configuration;
 
 namespace ScanVault.App.Tests;
 
@@ -79,6 +80,29 @@ public sealed class ViewModelTests : IDisposable
         Assert.Equal(nature, interactions.CopiedText);
     }
 
+    [Theory]
+    [InlineData(IndexCompatibilityState.Missing, true, "No index exists")]
+    [InlineData(IndexCompatibilityState.NewerVersionUnsupported, false, "newer ScanVault version")]
+    [InlineData(IndexCompatibilityState.Corrupted, false, "database file was preserved")]
+    public async Task MainViewModelExplainsCompatibilityAndGatesRescan(
+        IndexCompatibilityState state,
+        bool canWrite,
+        string expectedStatus)
+    {
+        var settingsStore = new MemorySettingsStore(new(root));
+        var compatibility = CompatibilityFor(state, canWrite);
+        using var viewModel = CreateMainViewModel(
+            [],
+            settingsStore,
+            new RecordingInteractions(),
+            compatibility);
+
+        await viewModel.InitializeAsync(CancellationToken.None);
+
+        Assert.Contains(expectedStatus, viewModel.StatusText, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(canWrite, viewModel.RescanCommand.CanExecute(null));
+    }
+
     [Fact]
     public async Task CardFormatsNormalizedHierarchyAndOmitsMissingRows()
     {
@@ -124,22 +148,52 @@ public sealed class ViewModelTests : IDisposable
     private static MainViewModel CreateMainViewModel(
         IReadOnlyList<AssetSummary> assets,
         MemorySettingsStore settingsStore,
-        RecordingInteractions interactions) => new(
-            new MemoryIndex(assets),
+        RecordingInteractions interactions,
+        IndexCompatibilityInfo? compatibility = null)
+    {
+        var index = new MemoryIndex(assets, compatibility);
+        var buildInfo = ApplicationBuildInfo.Create(
+            "9.8.7",
+            "9.8.7-test+abcdef1",
+            "abcdef1",
+            "Test",
+            "Test runtime",
+            "Test OS",
+            "X64");
+        var paths = new ScanVaultPaths(
+            Path.Combine(Path.GetTempPath(), "ScanVault.App.Tests", "index.db"),
+            Path.Combine(Path.GetTempPath(), "ScanVault.App.Tests", "settings.json"),
+            Path.Combine(Path.GetTempPath(), "ScanVault.App.Tests", "cache"));
+        return new(
+            index,
             new NoOpScanService(),
             settingsStore,
             new NullImageLoader(),
             interactions,
-            ApplicationBuildInfo.Create(
-                "9.8.7",
-                "9.8.7-test+abcdef1",
-                "abcdef1",
-                "Test",
-                "Test runtime",
-                "Test OS",
-                "X64"),
+            buildInfo,
+            new DiagnosticsService(index, paths, buildInfo),
             NullLoggerFactory.Instance,
             NullLogger<MainViewModel>.Instance);
+    }
+
+    private static IndexCompatibilityInfo CompatibilityFor(
+        IndexCompatibilityState state,
+        bool canWrite) => new(
+            state,
+            state == IndexCompatibilityState.Missing ? null : 2,
+            state == IndexCompatibilityState.Missing ? null : 2,
+            IsReadable: state is IndexCompatibilityState.Compatible or IndexCompatibilityState.RequiresRescan,
+            CanWrite: canWrite,
+            RequiresRescan: state == IndexCompatibilityState.RequiresRescan,
+            state switch
+            {
+                IndexCompatibilityState.Missing => "No index exists. Run Rescan to create it.",
+                IndexCompatibilityState.NewerVersionUnsupported =>
+                    "Index was created by a newer ScanVault version.",
+                IndexCompatibilityState.Corrupted =>
+                    "Index could not be read. The database file was preserved.",
+                _ => "Index is compatible."
+            });
 
     private static AssetSummary CreateAsset(
         string id,
@@ -178,10 +232,20 @@ public sealed class ViewModelTests : IDisposable
         }
     }
 
-    private sealed class MemoryIndex(IReadOnlyList<AssetSummary> assets) : IAssetIndex
+    private sealed class MemoryIndex(
+        IReadOnlyList<AssetSummary> assets,
+        IndexCompatibilityInfo? compatibility = null) : IAssetIndex
     {
-        public bool RequiresNormalizationRescan => false;
+        public IndexCompatibilityInfo Compatibility { get; } = compatibility ?? new(
+            IndexCompatibilityState.Compatible, 2, 2, true, true, false, "Index is compatible.");
+        public bool RequiresNormalizationRescan => Compatibility.RequiresRescan;
+
+        public Task<IndexCompatibilityInfo> InspectCompatibilityAsync(
+            CancellationToken cancellationToken) =>
+            Task.FromResult(Compatibility);
         public Task InitializeAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task<IndexDiagnostics> GetDiagnosticsAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(new IndexDiagnostics(Compatibility, assets.Count, null));
 
         public Task<IReadOnlyList<AssetSummary>> GetAssetsAsync(
             CancellationToken cancellationToken) =>

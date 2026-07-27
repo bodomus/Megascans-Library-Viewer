@@ -30,6 +30,7 @@ public partial class App : Application
                     services.AddSingleton(ApplicationBuildInfo.FromAssembly(typeof(App).Assembly));
                     services.AddSingleton<IImageLoader, BoundedImageLoader>();
                     services.AddSingleton<IAssetInteractionService, DesktopAssetInteractionService>();
+                    services.AddSingleton<DiagnosticsService>();
                     services.AddSingleton<MainViewModel>();
                     services.AddTransient<MainWindow>();
                 })

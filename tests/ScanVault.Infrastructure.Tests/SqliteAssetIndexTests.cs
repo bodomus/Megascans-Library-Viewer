@@ -10,12 +10,21 @@ namespace ScanVault.Infrastructure.Tests;
 public sealed class SqliteAssetIndexTests
 {
     [Fact]
-    public async Task CreatesVersionedDatabaseUsingPatchedSystemSqlite()
+    public async Task FirstReplacementCreatesVersionedDatabaseUsingPatchedSystemSqlite()
     {
         using var temporary = new TemporaryDirectory();
         var (index, paths) = CreateIndex(temporary);
 
         await index.InitializeAsync(CancellationToken.None);
+        Assert.Equal(IndexCompatibilityState.Missing, index.Compatibility.State);
+        Assert.False(File.Exists(paths.DatabasePath));
+
+        var root = temporary.CreateDirectory("library");
+        await index.ReplaceLibraryAsync(
+            root,
+            [CreateAsset("initial", root, DateTimeOffset.UnixEpoch)],
+            Draft(1),
+            CancellationToken.None);
 
         Assert.True(File.Exists(paths.DatabasePath));
         await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = paths.DatabasePath, Pooling = false }.ToString());

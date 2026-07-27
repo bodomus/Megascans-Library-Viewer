@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
@@ -8,13 +9,14 @@ using ScanVault.Infrastructure.Configuration;
 
 namespace ScanVault.Infrastructure.Persistence;
 
-public sealed class SqliteAssetIndex(
+public sealed partial class SqliteAssetIndex(
     ScanVaultPaths paths,
     ILogger<SqliteAssetIndex> logger) : IAssetIndex
 {
     public const int CurrentSchemaVersion = 2;
     public const int CurrentNormalizationVersion = 2;
     private static readonly bool ProviderInitialized = InitializeProvider();
+    private readonly ScanVaultPaths resolvedPaths = paths;
 
     private readonly string connectionString = new SqliteConnectionStringBuilder
     {
@@ -25,62 +27,60 @@ public sealed class SqliteAssetIndex(
         Pooling = false
     }.ToString();
 
-    public bool RequiresNormalizationRescan { get; private set; }
-
     public async Task InitializeAsync(CancellationToken cancellationToken)
     {
-        _ = ProviderInitialized;
-        var directory = Path.GetDirectoryName(paths.DatabasePath)
-            ?? throw new InvalidOperationException("Database path has no parent directory.");
-        Directory.CreateDirectory(directory);
-
-        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
-        await ExecuteAsync(
-            connection,
-            """
-            PRAGMA journal_mode = WAL;
-            PRAGMA synchronous = NORMAL;
-            PRAGMA foreign_keys = ON;
-            """,
-            cancellationToken).ConfigureAwait(false);
-
-        if (!await TableExistsAsync(connection, "schema_info", cancellationToken)
-                .ConfigureAwait(false))
+        Compatibility = await InspectCompatibilityAsync(cancellationToken).ConfigureAwait(false);
+        if (Compatibility.State == IndexCompatibilityState.RequiresMigration)
         {
-            await CreateSchemaAsync(connection, cancellationToken).ConfigureAwait(false);
-        }
-        else
-        {
-            var version = await ReadIntAsync(
-                    connection,
-                    "SELECT version FROM schema_info LIMIT 1;",
-                    cancellationToken)
-                .ConfigureAwait(false);
-            if (version == 1)
+            try
             {
-                await MigrateVersionOneAsync(connection, cancellationToken).ConfigureAwait(false);
+                await MigrateKnownSchemaAsync(cancellationToken).ConfigureAwait(false);
+                Compatibility = await InspectCompatibilityAsync(cancellationToken)
+                    .ConfigureAwait(false);
             }
-            else if (version != CurrentSchemaVersion)
+            catch (Exception exception) when (exception is SqliteException or InvalidOperationException)
             {
-                throw new InvalidOperationException(
-                    $"Unsupported ScanVault schema version {version}; expected {CurrentSchemaVersion}.");
+                InfrastructureLog.IndexCorrupted(logger, resolvedPaths.DatabasePath, exception);
+                Compatibility = new(
+                    IndexCompatibilityState.Corrupted,
+                    null,
+                    null,
+                    IsReadable: false,
+                    CanWrite: false,
+                    RequiresRescan: false,
+                    "Index migration failed. The database file was preserved. Back it up before attempting manual recovery.");
             }
         }
 
-        var normalizationVersion = await ReadIntAsync(
-                connection,
-                "SELECT normalization_version FROM schema_info LIMIT 1;",
-                cancellationToken)
-            .ConfigureAwait(false);
-        RequiresNormalizationRescan = normalizationVersion < CurrentNormalizationVersion;
-        InfrastructureLog.IndexReady(logger, paths.DatabasePath, CurrentSchemaVersion);
+        InfrastructureLog.IndexCompatibilityEvaluated(
+            logger,
+            resolvedPaths.DatabasePath,
+            Compatibility.State,
+            Compatibility.DatabaseSchemaVersion,
+            Compatibility.MetadataNormalizationVersion,
+            Compatibility.RequiresRescan);
+        if (!Compatibility.CanWrite &&
+            Compatibility.State is IndexCompatibilityState.NewerVersionUnsupported or
+                IndexCompatibilityState.Corrupted)
+        {
+            InfrastructureLog.IndexWritesBlocked(
+                logger,
+                resolvedPaths.DatabasePath,
+                Compatibility.State,
+                Compatibility.Guidance);
+        }
     }
 
     public async Task<IReadOnlyList<AssetSummary>> GetAssetsAsync(
         CancellationToken cancellationToken)
     {
         await InitializeAsync(cancellationToken).ConfigureAwait(false);
-        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        if (!Compatibility.IsReadable)
+        {
+            return [];
+        }
+
+        await using var connection = await OpenReadOnlyAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT id, name, asset_type, raw_asset_type, asset_folder_path, json_path,
@@ -143,8 +143,10 @@ public sealed class SqliteAssetIndex(
         ScanResult draftResult,
         CancellationToken cancellationToken)
     {
-        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        var persistenceStopwatch = Stopwatch.StartNew();
+        await PrepareWritableDatabaseAsync(cancellationToken).ConfigureAwait(false);
         await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await ConfigureWritableConnectionAsync(connection, cancellationToken).ConfigureAwait(false);
         await using var transaction = (SqliteTransaction)await connection
             .BeginTransactionAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -205,6 +207,17 @@ public sealed class SqliteAssetIndex(
                 "DELETE FROM tags WHERE NOT EXISTS (SELECT 1 FROM asset_tags WHERE asset_tags.tag_id = tags.tag_id);",
                 cancellationToken).ConfigureAwait(false);
 
+            var persistedScan = new PersistedScanMetadata(
+                DateTimeOffset.UtcNow,
+                draftResult.Elapsed + persistenceStopwatch.Elapsed,
+                ScanAttemptStatus.Succeeded,
+                added,
+                updated,
+                removed,
+                draftResult.SkippedMalformedFiles +
+                draftResult.SkippedUnrelatedFiles +
+                draftResult.DuplicateGroups.Sum(group => group.SkippedCopyJsonPaths.Count),
+                draftResult.InaccessibleDirectories.Count);
             await using var scanState = connection.CreateCommand();
             scanState.Transaction = transaction;
             scanState.CommandText = """
@@ -218,8 +231,12 @@ public sealed class SqliteAssetIndex(
             scanState.Parameters.AddWithValue("$root", libraryRoot);
             scanState.Parameters.AddWithValue(
                 "$completed",
-                DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture));
-            scanState.Parameters.AddWithValue("$result", JsonSerializer.Serialize(draftResult));
+                persistedScan.LastSuccessfulScanUtc.ToString(
+                    "O",
+                    CultureInfo.InvariantCulture));
+            scanState.Parameters.AddWithValue(
+                "$result",
+                JsonSerializer.Serialize(persistedScan));
             await scanState.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
 
             // The new parser becomes authoritative only in the same transaction that
@@ -232,7 +249,7 @@ public sealed class SqliteAssetIndex(
 
             cancellationToken.ThrowIfCancellationRequested();
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
-            RequiresNormalizationRescan = false;
+            Compatibility = CompatibleCompatibility();
             return new(added, updated, removed);
         }
         catch

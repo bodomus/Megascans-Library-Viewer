@@ -29,6 +29,34 @@ public partial class MainWindow : Window
         window.ShowDialog();
     }
 
+    private async void OnDiagnosticsClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel viewModel)
+        {
+            return;
+        }
+
+        try
+        {
+            var diagnostics = await viewModel.CreateDiagnosticsViewModelAsync(
+                CancellationToken.None);
+            var window = new DiagnosticsWindow
+            {
+                Owner = this,
+                DataContext = diagnostics
+            };
+            window.ShowDialog();
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(
+                $"Diagnostics could not be opened.{Environment.NewLine}{exception.Message}",
+                "ScanVault diagnostics",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+    }
+
     private async void OnSortSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (DataContext is not MainViewModel viewModel ||

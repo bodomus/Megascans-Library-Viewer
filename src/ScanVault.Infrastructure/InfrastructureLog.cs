@@ -68,4 +68,43 @@ internal static partial class InfrastructureLog
 
     [LoggerMessage(1102, LogLevel.Error, "SQLite rollback failed")]
     public static partial void RollbackFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(1103, LogLevel.Information,
+        "SQLite index {DatabasePath} compatibility {CompatibilityState}; schema {SchemaVersion}; normalization {NormalizationVersion}; Rescan required {RequiresRescan}")]
+    public static partial void IndexCompatibilityEvaluated(
+        ILogger logger,
+        string databasePath,
+        object compatibilityState,
+        int? schemaVersion,
+        int? normalizationVersion,
+        bool requiresRescan);
+
+    [LoggerMessage(1104, LogLevel.Information,
+        "Migrating SQLite index {DatabasePath} from schema {FromVersion} to {ToVersion}")]
+    public static partial void IndexMigrationStarted(
+        ILogger logger,
+        string databasePath,
+        int fromVersion,
+        int toVersion);
+
+    [LoggerMessage(1105, LogLevel.Information,
+        "Migrated SQLite index {DatabasePath} to schema {SchemaVersion}")]
+    public static partial void IndexMigrationCompleted(
+        ILogger logger,
+        string databasePath,
+        int schemaVersion);
+
+    [LoggerMessage(1106, LogLevel.Warning,
+        "Writes blocked for SQLite index {DatabasePath}: {CompatibilityState}. {Guidance}")]
+    public static partial void IndexWritesBlocked(
+        ILogger logger,
+        string databasePath,
+        object compatibilityState,
+        string guidance);
+
+    [LoggerMessage(1107, LogLevel.Error, "SQLite index {DatabasePath} is corrupted or unreadable")]
+    public static partial void IndexCorrupted(
+        ILogger logger,
+        string databasePath,
+        Exception exception);
 }

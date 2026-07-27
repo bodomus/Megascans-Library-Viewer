@@ -95,10 +95,22 @@ public sealed class LibraryScanServiceTests
 
     private sealed class RecordingIndex(IndexUpdateResult update) : IAssetIndex
     {
-        public bool RequiresNormalizationRescan => false;
+        public IndexCompatibilityInfo Compatibility { get; } = new(
+            IndexCompatibilityState.Compatible,
+            2,
+            2,
+            true,
+            true,
+            false,
+            "Index is compatible.");
+        public bool RequiresNormalizationRescan => Compatibility.RequiresRescan;
         public IReadOnlyList<AssetSummary> CommittedAssets { get; private set; } = [];
 
+        public Task<IndexCompatibilityInfo> InspectCompatibilityAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(Compatibility);
         public Task InitializeAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task<IndexDiagnostics> GetDiagnosticsAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(new IndexDiagnostics(Compatibility, CommittedAssets.Count, null));
 
         public Task<IReadOnlyList<AssetSummary>> GetAssetsAsync(
             CancellationToken cancellationToken) =>

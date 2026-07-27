@@ -8,6 +8,18 @@ Version 1 databases migrate in a transaction. The migration adds `normalization_
 
 A populated version 1 index receives normalization marker 1 and the UI asks for an explicit corrective Rescan. An empty version 1 index can be marked current immediately. The marker becomes 2 only in the same transaction that successfully replaces the full asset set. Failed or cancelled correction therefore leaves both the previous usable rows and the old marker intact. Users never need to delete SQLite manually.
 
+## Read-before-write compatibility inspection
+
+Existing files are inspected through a private read-only, non-pooled connection before WAL or any other writable pragma is used. Validation checks SQLite integrity, the schema marker, structural schema version, version-specific required tables, and normalization version in that order. A newer structural marker is rejected before assumptions are made about its table layout. The resulting state controls both reads and the write gate:
+
+- current schema/current normalization is compatible;
+- schema v1 follows the supported transactional migration;
+- current schema with older normalization remains readable and requires Rescan;
+- newer schema or normalization is unsupported and never written;
+- missing is a normal empty state and does not create a file at startup;
+- unreadable, structurally invalid, or corrupt data is preserved and blocks writes.
+
+The replacement path repeats inspection immediately before opening a writable connection. Recovery from unsupported or corrupted data is deliberately manual; see `diagnostics.md`.
 ## Tables
 
 ### `schema_info`
@@ -37,7 +49,7 @@ Many-to-many links from assets to tags with cascading foreign keys. An index on 
 
 ### `scan_state`
 
-Single row containing the committed library root, completion timestamp, and serialized scan result.
+Single row containing the committed library root, completion timestamp, and serialized successful-scan metadata: duration, status, added/updated/removed/skipped counts, and inaccessible-folder count. Readers retain a fallback for the earlier serialized `ScanResult` payload.
 
 ## Full-scan transaction
 

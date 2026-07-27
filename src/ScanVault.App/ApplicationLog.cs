@@ -33,4 +33,9 @@ internal static partial class ApplicationLog
         string action,
         string assetId,
         Exception exception);
+
+    [LoggerMessage(2005, LogLevel.Warning, "Copy diagnostics failed")]
+    public static partial void DiagnosticsCopyFailed(
+        ILogger logger,
+        Exception exception);
 }
