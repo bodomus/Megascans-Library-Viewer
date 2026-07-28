@@ -42,7 +42,8 @@ public sealed class ContentInventoryViewModelTests
         var viewModel = new ContentInventoryViewModel(asset, interactions, NullLogger<ContentInventoryViewModel>.Instance);
 
         Assert.Single(viewModel.VariantLines);
-        Assert.Single(viewModel.TextureSetLines);
+        Assert.Contains("\u2014", Assert.Single(viewModel.TextureSetLines), StringComparison.Ordinal);
+        Assert.Contains("\u2014", Assert.Single(viewModel.UnclassifiedLines), StringComparison.Ordinal);
         var file = Assert.Single(viewModel.Files, item => item.Path.EndsWith("mesh_LOD0.fbx", StringComparison.Ordinal));
         file.CopyPathCommand.Execute(null);
         Assert.Equal(file.Path, interactions.CopiedText);
@@ -60,8 +61,8 @@ public sealed class ContentInventoryViewModelTests
         var root = Path.Combine(Path.GetTempPath(), "ScanVault.App.Tests", "inventory");
         return new(
             [new("Var1", [new(Path.Combine(root, "mesh_LOD0.fbx"), "mesh_LOD0.fbx", "Var1", 0, MeshFormat.Fbx)])],
-            [new(TextureSetKind.Atlas, 4096, [new(Path.Combine(root, "asset_4K_Albedo.jpg"), "asset_4K_Albedo.jpg", "Albedo", TextureMapType.Albedo, 4096, "JPG")])],
-            [],
+            [new(TextureSetKind.Atlas, null, [new(Path.Combine(root, "asset_4K_Albedo.jpg"), "asset_4K_Albedo.jpg", "Albedo", TextureMapType.Albedo, 4096, "JPG")])],
+            [new(Path.Combine(root, "unknown.dat"), "Unrecognized content file.")],
             status,
             [new(AssetContentIssueCode.DuplicateTexture, "Duplicate texture.", ["a", "b"])]);
     }

@@ -66,7 +66,7 @@ public sealed class MainWindowTests
                 var diagnosticsList = Assert.IsType<ListBox>(
                     FindVisualChild<ListBox>(diagnosticsWindow));
                 Assert.Equal(23, diagnosticsList.Items.Count);
-                Assert.Equal("About / Diagnostics � ScanVault 9.8.7", diagnosticsWindow.Title);
+                Assert.Equal("About / Diagnostics \u2014 ScanVault 9.8.7", diagnosticsWindow.Title);
                 contentWindow = new()
                 {
                     DataContext = new ContentInventoryViewModel(CreateAsset(), new NullInteractions(), NullLogger<ContentInventoryViewModel>.Instance),

@@ -322,7 +322,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 ScanPhase.Parsing =>
                     $"Parsing metadata… {scanProgress.ProcessedFiles:N0}/{scanProgress.DiscoveredFiles:N0}",
                 ScanPhase.Inventory =>
-                    $"Inventorying asset content� {scanProgress.ProcessedFiles:N0}/{scanProgress.DiscoveredFiles:N0}",
+                    $"Inventorying asset content\u2026 {scanProgress.ProcessedFiles:N0}/{scanProgress.DiscoveredFiles:N0}",
                 ScanPhase.Committing => "Updating SQLite index transaction…",
                 ScanPhase.Completed => "Refreshing indexed assets…",
                 _ => scanProgress.Phase.ToString()

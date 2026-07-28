@@ -30,3 +30,10 @@ Read-only benchmark on `tests/Megascan`: 378 files, 10 assets, 116 meshes, 239 t
 ## Residual risks
 
 Classification intentionally prefers visible ambiguity over guessing. Existing v2 indexes need a successful Rescan for content inventory. `Partial` remains reserved for future recognized asset profiles. No interactive WPF behavior is claimed beyond automated layout realization.
+## CI encoding follow-up — 2026-07-28
+
+GitHub Actions exposed four `U+FFFD` replacement characters introduced by a Windows code-page conversion during MLV-7 editing. The failing diagnostics-title assertion expected the corrupted character while the WPF window correctly produced an em dash.
+
+Corrected all four tracked occurrences with ASCII-safe C# Unicode escapes: the diagnostics title test (`\u2014`), unclassified-file separator (`\u2014`), unknown resolution placeholder (`\u2014`), and inventory progress ellipsis (`\u2026`). Extended `ContentInventoryViewModelTests` to cover the em-dash rendering. A repository-wide scan of tracked text files found no remaining `U+FFFD` characters.
+
+Validation after the fix: App tests 18/18; full solution tests 93/93; Release build 0 warnings / 0 errors; restore, formatter verification, and `git diff --check` passed. Graph review confirmed a direct App/test-only correction with no architecture or persistence impact.

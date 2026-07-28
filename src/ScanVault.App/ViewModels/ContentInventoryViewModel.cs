@@ -18,7 +18,7 @@ public sealed class ContentInventoryViewModel
         TextureSetLines = asset.Content.TextureSets.SelectMany(set => set.Components.Select(component =>
             $"{set.Kind}  {FormatResolution(set.Resolution)}  {component.MapType}  {component.FileName}")).ToArray();
         IssueLines = asset.Content.Issues.Select(issue => $"{issue.Code}: {issue.Message}").ToArray();
-        UnclassifiedLines = asset.Content.UnclassifiedFiles.Select(file => $"{file.Path} � {file.Reason}").ToArray();
+        UnclassifiedLines = asset.Content.UnclassifiedFiles.Select(file => $"{file.Path} \u2014 {file.Reason}").ToArray();
         Files = asset.Content.Variants.SelectMany(static variant => variant.Meshes).Select(static mesh => mesh.Path)
             .Concat(asset.Content.TextureSets.SelectMany(static set => set.Components).Select(static component => component.Path))
             .Concat(asset.Content.UnclassifiedFiles.Select(static file => file.Path))
@@ -37,7 +37,7 @@ public sealed class ContentInventoryViewModel
     public IReadOnlyList<string> UnclassifiedLines { get; }
     public IReadOnlyList<InventoryFileViewModel> Files { get; }
 
-    private static string FormatResolution(int? value) => value is null ? "�" : value >= 1024 ? $"{value / 1024}K" : value.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    private static string FormatResolution(int? value) => value is null ? "\u2014" : value >= 1024 ? $"{value / 1024}K" : value.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
 }
 
 public sealed class InventoryFileViewModel
