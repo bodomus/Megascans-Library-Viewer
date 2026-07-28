@@ -21,6 +21,7 @@ public sealed class MainWindowTests
             global::ScanVault.App.App? application = null;
             global::ScanVault.App.MainWindow? window = null;
             global::ScanVault.App.DiagnosticsWindow? diagnosticsWindow = null;
+            global::ScanVault.App.ContentInventoryWindow? contentWindow = null;
             try
             {
                 application = new();
@@ -65,7 +66,19 @@ public sealed class MainWindowTests
                 var diagnosticsList = Assert.IsType<ListBox>(
                     FindVisualChild<ListBox>(diagnosticsWindow));
                 Assert.Equal(23, diagnosticsList.Items.Count);
-                Assert.Equal("About / Diagnostics — ScanVault 9.8.7", diagnosticsWindow.Title);
+                Assert.Equal("About / Diagnostics � ScanVault 9.8.7", diagnosticsWindow.Title);
+                contentWindow = new()
+                {
+                    DataContext = new ContentInventoryViewModel(CreateAsset(), new NullInteractions(), NullLogger<ContentInventoryViewModel>.Instance),
+                    ShowActivated = false,
+                    ShowInTaskbar = false,
+                    Left = -10_000,
+                    Top = -10_000
+                };
+                contentWindow.Show();
+                contentWindow.UpdateLayout();
+                var contentTabs = Assert.IsType<TabControl>(FindVisualChild<TabControl>(contentWindow));
+                Assert.Equal(4, contentTabs.Items.Count);
             }
             catch (Exception exception)
             {
@@ -73,6 +86,7 @@ public sealed class MainWindowTests
             }
             finally
             {
+                contentWindow?.Close();
                 diagnosticsWindow?.Close();
                 window?.Close();
                 application?.Shutdown();

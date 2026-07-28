@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -186,15 +186,26 @@ public partial class MainWindow : Window
         if (subscribedViewModel is not null)
         {
             subscribedViewModel.Preview.PropertyChanged -= OnPreviewPropertyChanged;
+            subscribedViewModel.ContentInventoryRequested -= OnContentInventoryRequested;
         }
 
         subscribedViewModel = e.NewValue as MainViewModel;
         if (subscribedViewModel is not null)
         {
             subscribedViewModel.Preview.PropertyChanged += OnPreviewPropertyChanged;
+            subscribedViewModel.ContentInventoryRequested += OnContentInventoryRequested;
         }
     }
 
+    private void OnContentInventoryRequested(ContentInventoryViewModel viewModel)
+    {
+        var window = new ContentInventoryWindow
+        {
+            Owner = this,
+            DataContext = viewModel
+        };
+        window.ShowDialog();
+    }
     private void OnPreviewPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName != nameof(PreviewViewModel.IsOpen) ||
@@ -222,6 +233,7 @@ public partial class MainWindow : Window
         if (subscribedViewModel is not null)
         {
             subscribedViewModel.Preview.PropertyChanged -= OnPreviewPropertyChanged;
+            subscribedViewModel.ContentInventoryRequested -= OnContentInventoryRequested;
         }
     }
 }

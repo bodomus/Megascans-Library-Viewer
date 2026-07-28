@@ -1,4 +1,4 @@
-<Window x:Class="ScanVault.App.MainWindow"
+﻿<Window x:Class="ScanVault.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="clr-namespace:ScanVault.App.Controls"
@@ -13,40 +13,37 @@
 
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="54" />
+            <RowDefinition Height="84" />
             <RowDefinition Height="*" />
             <RowDefinition Height="30" />
         </Grid.RowDefinitions>
 
         <Border Grid.Row="0" Background="{StaticResource PanelBackground}"
                 BorderBrush="#343B46" BorderThickness="0,0,0,1" Padding="12,8">
-            <DockPanel LastChildFill="True">
-                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
-                    <Button Content="Settings" Click="OnSettingsClick"
-                            Padding="14,6" Margin="0,0,8,0" />
-                    <Button Content="About / Diagnostics" Click="OnDiagnosticsClick"
-                            Padding="14,6" Margin="0,0,8,0" />
-                    <Button Content="Rescan" Command="{Binding RescanCommand}"
-                            Padding="14,6" Margin="0,0,8,0" />
-                    <Button Content="Cancel" Command="{Binding CancelScanCommand}"
-                            Padding="14,6" Margin="0,0,14,0" />
+            <Grid>
+                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                <DockPanel Grid.Row="0" LastChildFill="True">
+                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+                        <Button Content="Settings" Click="OnSettingsClick" Padding="14,6" Margin="0,0,8,0" />
+                        <Button Content="About / Diagnostics" Click="OnDiagnosticsClick" Padding="14,6" Margin="0,0,8,0" />
+                        <Button Content="Rescan" Command="{Binding RescanCommand}" Padding="14,6" Margin="0,0,8,0" />
+                        <Button Content="Cancel" Command="{Binding CancelScanCommand}" Padding="14,6" Margin="0,0,14,0" />
+                    </StackPanel>
+                    <TextBlock DockPanel.Dock="Right" Text="{Binding StatusText}" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="360" Margin="12,0,0,0" />
+                    <ComboBox DockPanel.Dock="Right" Width="190" Margin="8,0,0,0" ItemsSource="{Binding SortOptions}" DisplayMemberPath="Label" SelectedValuePath="Mode" SelectedValue="{Binding SortMode, Mode=OneWay}" SelectionChanged="OnSortSelectionChanged" ToolTip="Sort visible assets" />
+                    <TextBox x:Name="SearchBox" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" ToolTip="Filter metadata and content inventory" VerticalContentAlignment="Center" Padding="10,5" MinWidth="220" MaxWidth="420" />
+                </DockPanel>
+                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,5,0,0">
+                    <TextBlock Text="CONTENT:" Foreground="{StaticResource TextSecondary}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <CheckBox Content="Has FBX" IsChecked="{Binding FilterHasFbx, Mode=OneWay}" Command="{Binding ToggleHasFbxCommand}" Margin="0,0,12,0"/>
+                    <CheckBox Content="Has LODs" IsChecked="{Binding FilterHasLods, Mode=OneWay}" Command="{Binding ToggleHasLodsCommand}" Margin="0,0,12,0"/>
+                    <CheckBox Content="Billboard" IsChecked="{Binding FilterHasBillboard, Mode=OneWay}" Command="{Binding ToggleHasBillboardCommand}" Margin="0,0,12,0"/>
+                    <CheckBox Content="Atlas" IsChecked="{Binding FilterHasAtlas, Mode=OneWay}" Command="{Binding ToggleHasAtlasCommand}" Margin="0,0,12,0"/>
+                    <CheckBox Content="Complete" IsChecked="{Binding FilterComplete, Mode=OneWay}" Command="{Binding ToggleCompleteCommand}" Margin="0,0,12,0"/>
+                    <CheckBox Content="Incomplete" IsChecked="{Binding FilterIncomplete, Mode=OneWay}" Command="{Binding ToggleIncompleteCommand}" Margin="0,0,12,0"/>
+                    <CheckBox Content="Ambiguous" IsChecked="{Binding FilterAmbiguous, Mode=OneWay}" Command="{Binding ToggleAmbiguousCommand}"/>
                 </StackPanel>
-                <TextBlock DockPanel.Dock="Right" Text="{Binding StatusText}"
-                           Foreground="{StaticResource TextSecondary}"
-                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                           MaxWidth="410" Margin="12,0,0,0" />
-                <ComboBox DockPanel.Dock="Right" Width="190" Margin="8,0,0,0"
-                          ItemsSource="{Binding SortOptions}"
-                          DisplayMemberPath="Label" SelectedValuePath="Mode"
-                          SelectedValue="{Binding SortMode, Mode=OneWay}"
-                          SelectionChanged="OnSortSelectionChanged"
-                          ToolTip="Sort visible assets" />
-                <TextBox x:Name="SearchBox"
-                         Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                         ToolTip="Filter by name, ID, type, category, tags, biome, or region"
-                         VerticalContentAlignment="Center"
-                         Padding="10,5" MinWidth="220" MaxWidth="420" />
-            </DockPanel>
+            </Grid>
         </Border>
 
         <Grid Grid.Row="1">
@@ -101,7 +98,7 @@
                      VirtualizingPanel.VirtualizationMode="Recycling">
                 <ListBox.ItemsPanel>
                     <ItemsPanelTemplate>
-                        <controls:VirtualizingWrapPanel ItemWidth="190" ItemHeight="230" />
+                        <controls:VirtualizingWrapPanel ItemWidth="190" ItemHeight="260" />
                     </ItemsPanelTemplate>
                 </ListBox.ItemsPanel>
                 <ListBox.ItemContainerStyle>
@@ -143,6 +140,7 @@
                                 <ContextMenu>
                                     <MenuItem Header="Open preview" Command="{Binding OpenPreviewCommand}" />
                                     <MenuItem Header="Open folder" Command="{Binding OpenFolderCommand}" />
+                                    <MenuItem Header="Show content inventory" Command="{Binding ShowContentInventoryCommand}" />
                                     <Separator />
                                     <MenuItem Header="Copy asset ID" Command="{Binding CopyAssetIdCommand}" />
                                     <MenuItem Header="Copy folder path" Command="{Binding CopyFolderPathCommand}" />
@@ -172,6 +170,16 @@
                                     <TextBlock Text="{Binding CompactDetails}" FontSize="11"
                                                Foreground="{StaticResource Accent}"
                                                TextTrimming="CharacterEllipsis" ToolTip="{Binding CompactDetails}" />
+                                    <ItemsControl ItemsSource="{Binding Badges}" Margin="0,3,0,0">
+                                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate><DataTemplate>
+                                            <Border Background="#405064" CornerRadius="3" Padding="4,1" Margin="0,0,3,2">
+                                                <TextBlock Text="{Binding}" FontSize="9" Foreground="White" />
+                                            </Border>
+                                        </DataTemplate></ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <TextBlock Text="{Binding ContentWarning}" FontSize="10" FontWeight="Bold" Foreground="#FFB3A7"
+                                               Visibility="{Binding HasContentWarning, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                 </StackPanel>
 
                                 <Popup IsOpen="{Binding IsHoverOpen, Mode=OneWay}"
@@ -216,6 +224,16 @@
                                                 <TextBlock Text="{Binding IndustriesDisplay, StringFormat=Industries: {0}}"
                                                            Foreground="White" TextWrapping="Wrap"
                                                            Visibility="{Binding HasIndustries, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                <TextBlock Text="Content" FontWeight="SemiBold" Foreground="White" Margin="0,10,0,2" />
+                                                <TextBlock Text="{Binding ContentVariantsDisplay}" Foreground="White" />
+                                                <TextBlock Text="{Binding ContentLodsDisplay}" Foreground="White" TextWrapping="Wrap" />
+                                                <TextBlock Text="{Binding ContentMeshesDisplay}" Foreground="White" />
+                                                <TextBlock Text="{Binding ContentSetsDisplay}" Foreground="White" TextWrapping="Wrap" />
+                                                <TextBlock Text="{Binding ContentMapsDisplay}" Foreground="White" TextWrapping="Wrap" />
+                                                <TextBlock Text="{Binding ContentStatusDisplay}" Foreground="{StaticResource Accent}" />
+                                                <TextBlock Text="{Binding ContentIssuesDisplay}" Foreground="#FFB3A7" />
+                                                <Button Content="Show content inventory" Command="{Binding ShowContentInventoryCommand}"
+                                                        HorizontalAlignment="Left" Padding="8,3" Margin="0,5,0,0" />
                                                 <TextBlock Text="Folder" FontWeight="SemiBold" Foreground="White"
                                                            Margin="0,8,0,1" />
                                                 <TextBlock Text="{Binding Asset.AssetFolderPath}" Foreground="#B9C1CC"

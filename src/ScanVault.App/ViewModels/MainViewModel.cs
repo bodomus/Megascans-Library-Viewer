@@ -30,6 +30,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private bool isScanning;
     private int indexedAssetCount;
     private AssetSortMode sortMode = AssetSortMode.NameAscending;
+    private AssetInventoryFilter inventoryFilter;
     private AssetCardViewModel? selectedCard;
     private ScanAttemptStatus lastScanStatus;
     private TimeSpan? lastScanDuration;
@@ -72,6 +73,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         CopySelectedFolderCommand = new RelayCommand(
             CopySelectedFolder,
             () => SelectedCard is not null);
+        ToggleHasFbxCommand = new AsyncRelayCommand(token => ToggleFilterAsync(AssetInventoryFilter.HasFbx, token));
+        ToggleHasLodsCommand = new AsyncRelayCommand(token => ToggleFilterAsync(AssetInventoryFilter.HasLods, token));
+        ToggleHasBillboardCommand = new AsyncRelayCommand(token => ToggleFilterAsync(AssetInventoryFilter.HasBillboard, token));
+        ToggleHasAtlasCommand = new AsyncRelayCommand(token => ToggleFilterAsync(AssetInventoryFilter.HasAtlas, token));
+        ToggleCompleteCommand = new AsyncRelayCommand(token => ToggleFilterAsync(AssetInventoryFilter.Complete, token));
+        ToggleIncompleteCommand = new AsyncRelayCommand(token => ToggleFilterAsync(AssetInventoryFilter.Incomplete, token));
+        ToggleAmbiguousCommand = new AsyncRelayCommand(token => ToggleFilterAsync(AssetInventoryFilter.Ambiguous, token));
         Preview.PropertyChanged += OnPreviewPropertyChanged;
     }
 
@@ -86,7 +94,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         new(AssetSortMode.ResolutionAscending, "Resolution low to high"),
         new(AssetSortMode.RecentlyModified, "Recently modified"),
         new(AssetSortMode.OldestModified, "Oldest modified"),
-        new(AssetSortMode.AssetIdAscending, "Asset ID A–Z")
+        new(AssetSortMode.AssetIdAscending, "Asset ID A–Z"),
+        new(AssetSortMode.Completeness, "Completeness"),
+        new(AssetSortMode.VariantCountDescending, "Variant count"),
+        new(AssetSortMode.LodCountDescending, "LOD count"),
+        new(AssetSortMode.TextureSetCountDescending, "Texture-set count")
     ];
     public SettingsViewModel Settings { get; }
     public PreviewViewModel Preview { get; }
@@ -96,6 +108,38 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public RelayCommand ClosePreviewCommand { get; }
     public AsyncRelayCommand OpenSelectedPreviewCommand { get; }
     public RelayCommand CopySelectedFolderCommand { get; }
+    public AsyncRelayCommand ToggleHasFbxCommand { get; }
+    public AsyncRelayCommand ToggleHasLodsCommand { get; }
+    public AsyncRelayCommand ToggleHasBillboardCommand { get; }
+    public AsyncRelayCommand ToggleHasAtlasCommand { get; }
+    public AsyncRelayCommand ToggleCompleteCommand { get; }
+    public AsyncRelayCommand ToggleIncompleteCommand { get; }
+    public AsyncRelayCommand ToggleAmbiguousCommand { get; }
+    public event Action<ContentInventoryViewModel>? ContentInventoryRequested;
+    public AssetInventoryFilter InventoryFilter
+    {
+        get => inventoryFilter;
+        private set
+        {
+            if (SetProperty(ref inventoryFilter, value))
+            {
+                OnPropertyChanged(nameof(FilterHasFbx));
+                OnPropertyChanged(nameof(FilterHasLods));
+                OnPropertyChanged(nameof(FilterHasBillboard));
+                OnPropertyChanged(nameof(FilterHasAtlas));
+                OnPropertyChanged(nameof(FilterComplete));
+                OnPropertyChanged(nameof(FilterIncomplete));
+                OnPropertyChanged(nameof(FilterAmbiguous));
+            }
+        }
+    }
+    public bool FilterHasFbx => InventoryFilter.HasFlag(AssetInventoryFilter.HasFbx);
+    public bool FilterHasLods => InventoryFilter.HasFlag(AssetInventoryFilter.HasLods);
+    public bool FilterHasBillboard => InventoryFilter.HasFlag(AssetInventoryFilter.HasBillboard);
+    public bool FilterHasAtlas => InventoryFilter.HasFlag(AssetInventoryFilter.HasAtlas);
+    public bool FilterComplete => InventoryFilter.HasFlag(AssetInventoryFilter.Complete);
+    public bool FilterIncomplete => InventoryFilter.HasFlag(AssetInventoryFilter.Incomplete);
+    public bool FilterAmbiguous => InventoryFilter.HasFlag(AssetInventoryFilter.Ambiguous);
     public string WindowTitle { get; }
     public string ProductVersion { get; }
     public ScanAttemptStatus LastScanStatus => lastScanStatus;
@@ -177,6 +221,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         await index.InitializeAsync(cancellationToken);
         await Settings.LoadAsync(cancellationToken);
         SortMode = Settings.SortMode;
+        InventoryFilter = Settings.InventoryFilter;
         allAssets = await index.GetAssetsAsync(cancellationToken);
         RebuildNavigation();
         StatusText = DescribeStartupStatus(index.Compatibility, allAssets.Count);
@@ -276,6 +321,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                     $"Discovering metadata… {scanProgress.DiscoveredFiles:N0} JSON files",
                 ScanPhase.Parsing =>
                     $"Parsing metadata… {scanProgress.ProcessedFiles:N0}/{scanProgress.DiscoveredFiles:N0}",
+                ScanPhase.Inventory =>
+                    $"Inventorying asset content� {scanProgress.ProcessedFiles:N0}/{scanProgress.DiscoveredFiles:N0}",
                 ScanPhase.Committing => "Updating SQLite index transaction…",
                 ScanPhase.Completed => "Refreshing indexed assets…",
                 _ => scanProgress.Phase.ToString()
@@ -295,7 +342,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             StatusText =
                 $"Scan complete: +{result.AddedAssets}, ~{result.UpdatedAssets}, -{result.RemovedAssets}; " +
                 $"{result.SkippedMalformedFiles} malformed, {result.InaccessibleDirectories.Count} inaccessible, " +
-                $"{result.DuplicateGroups.Count} duplicate ID groups; {result.Elapsed:g}.";
+                $"{result.DuplicateGroups.Count} duplicate ID groups; " +
+                $"{result.AssetsInventoried} inventoried, {result.MeshFilesFound} meshes, {result.TextureFilesFound} textures, " +
+                $"{result.AmbiguousAssets} ambiguous, {result.AssetsMissingCriticalFiles} missing critical; {result.Elapsed:g}.";
         }
         catch (OperationCanceledException)
         {
@@ -326,6 +375,34 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         $"{result.SkippedMalformedFiles + result.SkippedUnrelatedFiles + result.DuplicateGroups.Sum(group => group.SkippedCopyJsonPaths.Count)} skipped, " +
         $"{result.InaccessibleDirectories.Count} inaccessible";
 
+    private async Task ToggleFilterAsync(AssetInventoryFilter flag, CancellationToken cancellationToken)
+    {
+        var updated = InventoryFilter ^ flag;
+        if ((flag is AssetInventoryFilter.Complete or AssetInventoryFilter.Incomplete or AssetInventoryFilter.Ambiguous) && updated.HasFlag(flag))
+        {
+            updated &= ~(AssetInventoryFilter.Complete | AssetInventoryFilter.Incomplete | AssetInventoryFilter.Ambiguous);
+            updated |= flag;
+        }
+        try
+        {
+            await Settings.SaveInventoryFilterAsync(updated, cancellationToken);
+            InventoryFilter = updated;
+            RefreshVisibleAssets();
+            StatusText = updated == AssetInventoryFilter.None ? "Inventory filters cleared." : $"Inventory filters: {updated}.";
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Command cancellation leaves the persisted and visible filters unchanged.
+        }
+        catch (Exception exception)
+        {
+            ApplicationLog.InventoryFilterSaveFailed(logger, exception);
+            StatusText = $"Inventory filter could not be saved: {exception.Message}";
+        }
+    }
+
+    private void RequestContentInventory(AssetSummary asset) =>
+        ContentInventoryRequested?.Invoke(new ContentInventoryViewModel(asset, interactions, logger));
     private void CancelScan() => scanCancellation?.Cancel();
 
     private void RebuildNavigation()
@@ -365,6 +442,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 AssetFiltering.IsInFolder(asset, SelectedFolderPath));
         }
 
+        if (InventoryFilter != AssetInventoryFilter.None)
+        {
+            query = query.Where(asset => AssetFiltering.MatchesInventoryFilter(asset, InventoryFilter));
+        }
+
         if (!string.IsNullOrWhiteSpace(SearchText))
         {
             query = query.Where(asset => AssetFiltering.MatchesSearch(asset, SearchText));
@@ -378,7 +460,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 interactions,
                 Preview.OpenAsync,
                 ReportStatus,
-                cardLogger);
+                cardLogger,
+                RequestContentInventory);
             Assets.Add(card);
             if (StringComparer.Ordinal.Equals(asset.Id, selectedId) &&
                 StringComparer.OrdinalIgnoreCase.Equals(asset.JsonPath, selectedJsonPath))

@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using ScanVault.App.ViewModels;
 using ScanVault.Core.Abstractions;
 using ScanVault.Core.Models;
@@ -33,6 +33,24 @@ public sealed class SettingsSortTests : IDisposable
         Assert.True(viewModel.IsDirty);
     }
 
+    [Fact]
+    public async Task InventoryFilterPersistsWithoutSavingAnEditedLibraryRoot()
+    {
+        var store = new Store(new(root));
+        var viewModel = new SettingsViewModel(store);
+        await viewModel.LoadAsync(CancellationToken.None);
+        var unsaved = Path.Combine(root, "unsaved-filter-root");
+        Directory.CreateDirectory(unsaved);
+        viewModel.LibraryRoot = unsaved;
+
+        await viewModel.SaveInventoryFilterAsync(
+            AssetInventoryFilter.HasFbx | AssetInventoryFilter.HasAtlas,
+            CancellationToken.None);
+
+        Assert.Equal(root, store.Value.LibraryRoot);
+        Assert.Equal(AssetInventoryFilter.HasFbx | AssetInventoryFilter.HasAtlas, store.Value.InventoryFilter);
+        Assert.True(viewModel.IsDirty);
+    }
     public void Dispose() => Directory.Delete(root, recursive: true);
 
     private sealed class Store(LibrarySettings settings) : ISettingsStore

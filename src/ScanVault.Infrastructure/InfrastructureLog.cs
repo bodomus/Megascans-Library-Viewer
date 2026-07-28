@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 
 namespace ScanVault.Infrastructure;
 
@@ -59,6 +59,26 @@ internal static partial class InfrastructureLog
         string jsonPath,
         string resolution);
 
+    [LoggerMessage(1010, LogLevel.Information, "Starting asset-content inventory for {AssetCount} assets")]
+    public static partial void InventoryStarted(ILogger logger, int assetCount);
+
+    [LoggerMessage(1011, LogLevel.Information,
+        "Completed asset-content inventory: {AssetCount} assets, {MeshCount} meshes, {TextureCount} textures, {AmbiguousCount} ambiguous, {MissingCriticalCount} missing critical")]
+    public static partial void InventoryCompleted(
+        ILogger logger,
+        int assetCount,
+        int meshCount,
+        int textureCount,
+        int ambiguousCount,
+        int missingCriticalCount);
+
+    [LoggerMessage(1012, LogLevel.Warning, "Asset content issue for {AssetId}: {IssueCode} — {Message}; {Paths}")]
+    public static partial void InventoryIssue(
+        ILogger logger,
+        string assetId,
+        object issueCode,
+        string message,
+        string paths);
     [LoggerMessage(1101, LogLevel.Information,
         "SQLite index ready at {DatabasePath}, schema version {SchemaVersion}")]
     public static partial void IndexReady(

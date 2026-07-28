@@ -1,4 +1,4 @@
-namespace ScanVault.Core.Models;
+﻿namespace ScanVault.Core.Models;
 
 /// <summary>Stable logic keys for catalog ordering. UI labels are defined separately.</summary>
 public enum AssetSortMode
@@ -10,6 +10,9 @@ public enum AssetSortMode
     ResolutionAscending,
     RecentlyModified,
     OldestModified,
-    AssetIdAscending
+    AssetIdAscending,
+    Completeness,
+    VariantCountDescending,
+    LodCountDescending,
+    TextureSetCountDescending
 }
-

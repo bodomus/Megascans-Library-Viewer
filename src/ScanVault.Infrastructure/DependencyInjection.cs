@@ -1,4 +1,4 @@
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using ScanVault.Core.Abstractions;
 using ScanVault.Infrastructure.Configuration;
 using ScanVault.Infrastructure.Parsing;
@@ -17,6 +17,7 @@ public static class DependencyInjection
         services.AddSingleton(paths ?? ScanVaultPaths.ForCurrentUser());
         services.AddSingleton<IFileSystemScanner, FileSystemScanner>();
         services.AddSingleton<IAssetMetadataParser, MegascansMetadataParser>();
+        services.AddSingleton<IAssetContentInventoryService, AssetContentInventoryService>();
         services.AddSingleton<IAssetIndex, SqliteAssetIndex>();
         services.AddSingleton<ISettingsStore, JsonSettingsStore>();
         services.AddSingleton<ILibraryScanService, LibraryScanService>();

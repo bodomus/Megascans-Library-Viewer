@@ -1,4 +1,4 @@
-using ScanVault.Core.Models;
+﻿using ScanVault.Core.Models;
 
 namespace ScanVault.Core.Policies;
 
@@ -29,9 +29,29 @@ public static class AssetFiltering
                asset.Categories.Any(value => value.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
                asset.Tags.Any(tag => tag.Value.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
                asset.Biome?.Contains(term, StringComparison.OrdinalIgnoreCase) == true ||
-               asset.Region?.Contains(term, StringComparison.OrdinalIgnoreCase) == true;
+               asset.Region?.Contains(term, StringComparison.OrdinalIgnoreCase) == true ||
+               asset.Content.Completeness.ToString().Contains(term, StringComparison.OrdinalIgnoreCase) ||
+               asset.Content.Variants.Any(variant =>
+                   variant.Name.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                   variant.Meshes.Any(mesh => mesh.FileName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                       $"LOD{mesh.Lod}".Contains(term, StringComparison.OrdinalIgnoreCase))) ||
+               asset.Content.TextureSets.SelectMany(static set => set.Components).Any(component =>
+                   component.FileName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                   component.MapType.ToString().Contains(term, StringComparison.OrdinalIgnoreCase)) ||
+               asset.Content.Issues.Any(issue => issue.Message.Contains(term, StringComparison.OrdinalIgnoreCase));
     }
 
+    public static bool MatchesInventoryFilter(AssetSummary asset, AssetInventoryFilter filter)
+    {
+        var content = asset.Content;
+        return (!filter.HasFlag(AssetInventoryFilter.HasFbx) || content.HasFbx) &&
+               (!filter.HasFlag(AssetInventoryFilter.HasLods) || content.HasLods) &&
+               (!filter.HasFlag(AssetInventoryFilter.HasBillboard) || content.HasBillboard) &&
+               (!filter.HasFlag(AssetInventoryFilter.HasAtlas) || content.HasAtlas) &&
+               (!filter.HasFlag(AssetInventoryFilter.Complete) || content.Completeness == AssetCompletenessStatus.Complete) &&
+               (!filter.HasFlag(AssetInventoryFilter.Incomplete) || content.Completeness is not AssetCompletenessStatus.Complete and not AssetCompletenessStatus.Unknown) &&
+               (!filter.HasFlag(AssetInventoryFilter.Ambiguous) || content.Completeness == AssetCompletenessStatus.Ambiguous);
+    }
     public static IReadOnlyList<FolderNode> BuildFolderTree(
         string libraryRoot,
         IEnumerable<AssetSummary> assets)

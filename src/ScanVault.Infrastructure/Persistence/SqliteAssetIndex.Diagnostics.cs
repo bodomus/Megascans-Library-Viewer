@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using ScanVault.Core.Models;
@@ -76,7 +76,7 @@ public sealed partial class SqliteAssetIndex
                 return CorruptedCompatibility("Required index tables are missing.");
             }
 
-            if (schemaVersion == 1)
+            if (schemaVersion is 1 or 2)
             {
                 return new(
                     IndexCompatibilityState.RequiresMigration,
@@ -91,6 +91,11 @@ public sealed partial class SqliteAssetIndex
             if (schemaVersion != CurrentSchemaVersion)
             {
                 return CorruptedCompatibility($"Unsupported older schema marker {schemaVersion}.");
+            }
+
+            if (!await TableExistsAsync(connection, "asset_inventory_maps", cancellationToken).ConfigureAwait(false))
+            {
+                return CorruptedCompatibility("Required inventory index table is missing.");
             }
 
             var normalizationVersion = Convert.ToInt32(
@@ -119,7 +124,7 @@ public sealed partial class SqliteAssetIndex
                     IsReadable: true,
                     CanWrite: true,
                     RequiresRescan: true,
-                    "Index metadata is outdated — Rescan required.");
+                    "Index metadata is outdated вЂ” Rescan required.");
             }
 
             return CompatibleCompatibility();
@@ -197,8 +202,18 @@ public sealed partial class SqliteAssetIndex
     {
         await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
         await ConfigureWritableConnectionAsync(connection, cancellationToken).ConfigureAwait(false);
-        InfrastructureLog.IndexMigrationStarted(logger, resolvedPaths.DatabasePath, 1, CurrentSchemaVersion);
-        await MigrateVersionOneAsync(connection, cancellationToken).ConfigureAwait(false);
+        var fromVersion = await ReadIntAsync(connection, "SELECT version FROM schema_info LIMIT 1;", cancellationToken)
+            .ConfigureAwait(false);
+        InfrastructureLog.IndexMigrationStarted(logger, resolvedPaths.DatabasePath, fromVersion, CurrentSchemaVersion);
+        if (fromVersion == 1)
+        {
+            await MigrateVersionOneAsync(connection, cancellationToken).ConfigureAwait(false);
+            fromVersion = 2;
+        }
+        if (fromVersion == 2)
+        {
+            await MigrateVersionTwoAsync(connection, cancellationToken).ConfigureAwait(false);
+        }
         InfrastructureLog.IndexMigrationCompleted(logger, resolvedPaths.DatabasePath, CurrentSchemaVersion);
     }
 

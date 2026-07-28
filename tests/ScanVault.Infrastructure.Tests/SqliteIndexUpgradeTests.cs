@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Globalization;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -22,7 +22,7 @@ public sealed class SqliteIndexUpgradeTests
         Assert.True(index.RequiresNormalizationRescan);
         Assert.Equal("legacy", asset.Id);
         Assert.Equal(new ImageResolution(400400, 400400), asset.MaxResolution);
-        Assert.Equal(2, await ReadScalarAsync(paths.DatabasePath, "SELECT version FROM schema_info;"));
+        Assert.Equal(SqliteAssetIndex.CurrentSchemaVersion, await ReadScalarAsync(paths.DatabasePath, "SELECT version FROM schema_info;"));
         Assert.Equal(
             1,
             await ReadScalarAsync(paths.DatabasePath, "SELECT normalization_version FROM schema_info;"));

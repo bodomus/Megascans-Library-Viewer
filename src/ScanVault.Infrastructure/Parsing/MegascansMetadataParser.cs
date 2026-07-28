@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using ScanVault.Core.Abstractions;
 using ScanVault.Core.Models;
@@ -92,7 +92,8 @@ public sealed class MegascansMetadataParser(
                 tags,
                 new FileInfo(jsonPath).LastWriteTimeUtc)
             {
-                RawAssetType = type.Raw
+                RawAssetType = type.Raw,
+                ReferencedContentPaths = ReadContentReferences(root)
             };
 
             return AssetParseResult.Success(asset);
@@ -114,6 +115,43 @@ public sealed class MegascansMetadataParser(
         }
     }
 
+    private static string[] ReadContentReferences(JsonElement root)
+    {
+        var references = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        Visit(root);
+        return references.OrderBy(static value => value, StringComparer.OrdinalIgnoreCase).ToArray();
+
+        void Visit(JsonElement element)
+        {
+            switch (element.ValueKind)
+            {
+                case JsonValueKind.Object:
+                    foreach (var property in element.EnumerateObject()) Visit(property.Value);
+                    break;
+                case JsonValueKind.Array:
+                    foreach (var item in element.EnumerateArray()) Visit(item);
+                    break;
+                case JsonValueKind.String:
+                    var value = element.GetString();
+                    if (value is { Length: > 0 and <= 1024 } && IsContentPath(value)) references.Add(value);
+                    break;
+            }
+        }
+    }
+
+    private static bool IsContentPath(string value)
+    {
+        var extension = Path.GetExtension(value);
+        return extension.Equals(".fbx", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".abc", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".jpg", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".jpeg", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".png", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".tif", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".tiff", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".exr", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".tga", StringComparison.OrdinalIgnoreCase);
+    }
     private ImageResolution? ReadMaximumResolution(
         JsonElement root,
         string jsonPath,

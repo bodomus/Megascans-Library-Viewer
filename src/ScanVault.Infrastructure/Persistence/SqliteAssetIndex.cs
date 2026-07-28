@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
@@ -13,8 +13,8 @@ public sealed partial class SqliteAssetIndex(
     ScanVaultPaths paths,
     ILogger<SqliteAssetIndex> logger) : IAssetIndex
 {
-    public const int CurrentSchemaVersion = 2;
-    public const int CurrentNormalizationVersion = 2;
+    public const int CurrentSchemaVersion = 3;
+    public const int CurrentNormalizationVersion = 3;
     private static readonly bool ProviderInitialized = InitializeProvider();
     private readonly ScanVaultPaths resolvedPaths = paths;
 
@@ -86,7 +86,8 @@ public sealed partial class SqliteAssetIndex(
             SELECT id, name, asset_type, raw_asset_type, asset_folder_path, json_path,
                    thumbnail_path, preview_path, biome, region, physical_size,
                    max_resolution, resolution_width, resolution_height, texel_density,
-                   average_color, categories_json, tags_json, last_write_time_utc
+                   average_color, categories_json, tags_json, last_write_time_utc,
+                   inventory_json
             FROM assets
             ORDER BY name COLLATE NOCASE, id COLLATE NOCASE;
             """;
@@ -130,7 +131,9 @@ public sealed partial class SqliteAssetIndex(
                     CultureInfo.InvariantCulture,
                     DateTimeStyles.RoundtripKind))
             {
-                RawAssetType = reader.IsDBNull(3) ? null : reader.GetString(3)
+                RawAssetType = reader.IsDBNull(3) ? null : reader.GetString(3),
+                Content = JsonSerializer.Deserialize<AssetContentInventory>(reader.GetString(19))
+                    ?? AssetContentInventory.Empty
             });
         }
 
@@ -179,6 +182,8 @@ public sealed partial class SqliteAssetIndex(
                 await UpsertAssetAsync(connection, transaction, libraryRoot, asset, cancellationToken)
                     .ConfigureAwait(false);
                 await ReplaceTagsAsync(connection, transaction, asset, cancellationToken)
+                    .ConfigureAwait(false);
+                await ReplaceInventoryMapIndexAsync(connection, transaction, asset, cancellationToken)
                     .ConfigureAwait(false);
 
                 await using var currentCommand = connection.CreateCommand();
@@ -278,7 +283,7 @@ public sealed partial class SqliteAssetIndex(
                 version INTEGER NOT NULL,
                 normalization_version INTEGER NOT NULL
             );
-            INSERT INTO schema_info(version, normalization_version) VALUES (2, 2);
+            INSERT INTO schema_info(version, normalization_version) VALUES (3, 3);
 
             CREATE TABLE assets (
                 id TEXT PRIMARY KEY COLLATE NOCASE,
@@ -300,7 +305,16 @@ public sealed partial class SqliteAssetIndex(
                 average_color TEXT NULL,
                 categories_json TEXT NOT NULL,
                 tags_json TEXT NOT NULL,
-                last_write_time_utc TEXT NOT NULL
+                last_write_time_utc TEXT NOT NULL,
+                inventory_json TEXT NOT NULL,
+                completeness INTEGER NOT NULL,
+                has_fbx INTEGER NOT NULL,
+                has_lods INTEGER NOT NULL,
+                has_billboard INTEGER NOT NULL,
+                has_atlas INTEGER NOT NULL,
+                variant_count INTEGER NOT NULL,
+                lod_count INTEGER NOT NULL,
+                texture_set_count INTEGER NOT NULL
             );
 
             CREATE TABLE tags (
@@ -318,6 +332,17 @@ public sealed partial class SqliteAssetIndex(
                 FOREIGN KEY(tag_id) REFERENCES tags(tag_id) ON DELETE CASCADE
             );
 
+            CREATE TABLE asset_inventory_maps (
+                asset_id TEXT NOT NULL COLLATE NOCASE,
+                map_type INTEGER NOT NULL,
+                set_kind INTEGER NOT NULL,
+                resolution INTEGER NULL,
+                format TEXT NOT NULL,
+                path TEXT NOT NULL,
+                PRIMARY KEY(asset_id, path),
+                FOREIGN KEY(asset_id) REFERENCES assets(id) ON DELETE CASCADE
+            );
+
             CREATE TABLE scan_state (
                 singleton_id INTEGER PRIMARY KEY CHECK(singleton_id = 1),
                 library_root TEXT NOT NULL,
@@ -331,6 +356,13 @@ public sealed partial class SqliteAssetIndex(
             CREATE INDEX ix_assets_type ON assets(asset_type COLLATE NOCASE);
             CREATE INDEX ix_assets_biome ON assets(biome COLLATE NOCASE);
             CREATE INDEX ix_assets_region ON assets(region COLLATE NOCASE);
+            CREATE INDEX ix_assets_completeness ON assets(completeness);
+            CREATE INDEX ix_assets_has_fbx ON assets(has_fbx);
+            CREATE INDEX ix_assets_has_lods ON assets(has_lods);
+            CREATE INDEX ix_assets_has_billboard ON assets(has_billboard);
+            CREATE INDEX ix_assets_has_atlas ON assets(has_atlas);
+            CREATE INDEX ix_assets_variant_count ON assets(variant_count);
+            CREATE INDEX ix_asset_inventory_maps_type ON asset_inventory_maps(map_type, asset_id);
             CREATE INDEX ix_asset_tags_tag ON asset_tags(tag_id);
             """,
             cancellationToken).ConfigureAwait(false);
@@ -375,6 +407,62 @@ public sealed partial class SqliteAssetIndex(
         }
     }
 
+    private static async Task MigrateVersionTwoAsync(
+        SqliteConnection connection,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = (SqliteTransaction)await connection
+            .BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await ExecuteAsync(
+                connection,
+                transaction,
+                """
+                ALTER TABLE assets ADD COLUMN inventory_json TEXT NOT NULL
+                    DEFAULT '{"Variants":[],"TextureSets":[],"UnclassifiedFiles":[],"Completeness":5,"Issues":[]}';
+                ALTER TABLE assets ADD COLUMN completeness INTEGER NOT NULL DEFAULT 5;
+                ALTER TABLE assets ADD COLUMN has_fbx INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE assets ADD COLUMN has_lods INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE assets ADD COLUMN has_billboard INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE assets ADD COLUMN has_atlas INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE assets ADD COLUMN variant_count INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE assets ADD COLUMN lod_count INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE assets ADD COLUMN texture_set_count INTEGER NOT NULL DEFAULT 0;
+
+                CREATE TABLE asset_inventory_maps (
+                    asset_id TEXT NOT NULL COLLATE NOCASE,
+                    map_type INTEGER NOT NULL,
+                    set_kind INTEGER NOT NULL,
+                    resolution INTEGER NULL,
+                    format TEXT NOT NULL,
+                    path TEXT NOT NULL,
+                    PRIMARY KEY(asset_id, path),
+                    FOREIGN KEY(asset_id) REFERENCES assets(id) ON DELETE CASCADE
+                );
+                CREATE INDEX ix_assets_completeness ON assets(completeness);
+                CREATE INDEX ix_assets_has_fbx ON assets(has_fbx);
+                CREATE INDEX ix_assets_has_lods ON assets(has_lods);
+                CREATE INDEX ix_assets_has_billboard ON assets(has_billboard);
+                CREATE INDEX ix_assets_has_atlas ON assets(has_atlas);
+                CREATE INDEX ix_assets_variant_count ON assets(variant_count);
+                CREATE INDEX ix_asset_inventory_maps_type ON asset_inventory_maps(map_type, asset_id);
+                UPDATE schema_info
+                SET version = 3,
+                    normalization_version = CASE
+                        WHEN EXISTS (SELECT 1 FROM assets) THEN MIN(normalization_version, 2)
+                        ELSE 3
+                    END;
+                """,
+                cancellationToken).ConfigureAwait(false);
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None).ConfigureAwait(false);
+            throw;
+        }
+    }
     private async Task<SqliteConnection> OpenAsync(CancellationToken cancellationToken)
     {
         var connection = new SqliteConnection(connectionString);
@@ -421,11 +509,15 @@ public sealed partial class SqliteAssetIndex(
                 asset_folder_path, json_path, thumbnail_path, preview_path,
                 biome, region, physical_size, max_resolution,
                 resolution_width, resolution_height, texel_density, average_color,
-                categories_json, tags_json, last_write_time_utc)
+                categories_json, tags_json, last_write_time_utc, inventory_json,
+                completeness, has_fbx, has_lods, has_billboard, has_atlas,
+                variant_count, lod_count, texture_set_count)
             VALUES(
                 $id, $root, $name, $type, $rawType, $folder, $json, $thumb, $preview,
                 $biome, $region, $size, $resolution, $resolutionWidth,
-                $resolutionHeight, $texel, $color, $categories, $tags, $lastWrite)
+                $resolutionHeight, $texel, $color, $categories, $tags, $lastWrite,
+                $inventory, $completeness, $hasFbx, $hasLods, $hasBillboard, $hasAtlas,
+                $variantCount, $lodCount, $textureSetCount)
             ON CONFLICT(id) DO UPDATE SET
                 library_root = excluded.library_root,
                 name = excluded.name,
@@ -445,7 +537,16 @@ public sealed partial class SqliteAssetIndex(
                 average_color = excluded.average_color,
                 categories_json = excluded.categories_json,
                 tags_json = excluded.tags_json,
-                last_write_time_utc = excluded.last_write_time_utc;
+                last_write_time_utc = excluded.last_write_time_utc,
+                inventory_json = excluded.inventory_json,
+                completeness = excluded.completeness,
+                has_fbx = excluded.has_fbx,
+                has_lods = excluded.has_lods,
+                has_billboard = excluded.has_billboard,
+                has_atlas = excluded.has_atlas,
+                variant_count = excluded.variant_count,
+                lod_count = excluded.lod_count,
+                texture_set_count = excluded.texture_set_count;
             """;
         Add(command, "$id", asset.Id);
         Add(command, "$root", libraryRoot);
@@ -466,10 +567,16 @@ public sealed partial class SqliteAssetIndex(
         Add(command, "$color", asset.AverageColor);
         Add(command, "$categories", JsonSerializer.Serialize(asset.Categories));
         Add(command, "$tags", JsonSerializer.Serialize(asset.Tags));
-        Add(
-            command,
-            "$lastWrite",
-            asset.LastWriteTimeUtc.ToString("O", CultureInfo.InvariantCulture));
+        Add(command, "$lastWrite", asset.LastWriteTimeUtc.ToString("O", CultureInfo.InvariantCulture));
+        Add(command, "$inventory", JsonSerializer.Serialize(asset.Content));
+        Add(command, "$completeness", (int)asset.Content.Completeness);
+        Add(command, "$hasFbx", asset.Content.HasFbx);
+        Add(command, "$hasLods", asset.Content.HasLods);
+        Add(command, "$hasBillboard", asset.Content.HasBillboard);
+        Add(command, "$hasAtlas", asset.Content.HasAtlas);
+        Add(command, "$variantCount", asset.Content.VariantCount);
+        Add(command, "$lodCount", asset.Content.LodCount);
+        Add(command, "$textureSetCount", asset.Content.TextureSetCount);
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -503,6 +610,40 @@ public sealed partial class SqliteAssetIndex(
         }
     }
 
+    private static async Task ReplaceInventoryMapIndexAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        AssetSummary asset,
+        CancellationToken cancellationToken)
+    {
+        await using (var delete = connection.CreateCommand())
+        {
+            delete.Transaction = transaction;
+            delete.CommandText = "DELETE FROM asset_inventory_maps WHERE asset_id = $assetId;";
+            delete.Parameters.AddWithValue("$assetId", asset.Id);
+            await delete.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        foreach (var set in asset.Content.TextureSets)
+        {
+            foreach (var component in set.Components)
+            {
+                await using var command = connection.CreateCommand();
+                command.Transaction = transaction;
+                command.CommandText = """
+                    INSERT INTO asset_inventory_maps(asset_id, map_type, set_kind, resolution, format, path)
+                    VALUES ($assetId, $mapType, $setKind, $resolution, $format, $path);
+                    """;
+                Add(command, "$assetId", asset.Id);
+                Add(command, "$mapType", (int)component.MapType);
+                Add(command, "$setKind", (int)set.Kind);
+                Add(command, "$resolution", component.Resolution);
+                Add(command, "$format", component.Format);
+                Add(command, "$path", component.Path);
+                await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
     private static void Add(SqliteCommand command, string name, object? value) =>
         command.Parameters.AddWithValue(name, value ?? DBNull.Value);
 

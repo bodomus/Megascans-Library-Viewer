@@ -1,64 +1,49 @@
-# ScanVault SQLite index format
+﻿# ScanVault SQLite index format
 
-The per-user database is `%LocalAppData%\ScanVault\scanvault.db`. Schema version 2 and normalization version 2 are recorded in `schema_info`. ScanVault uses Microsoft.Data.Sqlite.Core with the patched Windows system SQLite provider; pooling is disabled so disposed application/test connections do not retain file handles.
+The per-user database is `%LocalAppData%\ScanVault\scanvault.db`. Schema version 3 and normalization version 3 are recorded in `schema_info`. Connections are non-pooled and use the patched Windows system SQLite provider.
 
-## Upgrade from version 1
+## Upgrade path
 
-Version 1 databases migrate in a transaction. The migration adds `normalization_version`, `raw_asset_type`, `resolution_width`, and `resolution_height`; a legacy scalar resolution is copied to both structured dimensions so the old index remains readable.
+Version 1 first migrates transactionally to version 2 by adding normalization/raw-type/structured-resolution fields. Version 2 then migrates transactionally to version 3 by adding inventory storage and indexes. Existing populated rows receive an empty `Unknown` inventory and retain an older normalization marker, so they remain readable while the UI requests an explicit Rescan. Empty databases can become current immediately.
 
-A populated version 1 index receives normalization marker 1 and the UI asks for an explicit corrective Rescan. An empty version 1 index can be marked current immediately. The marker becomes 2 only in the same transaction that successfully replaces the full asset set. Failed or cancelled correction therefore leaves both the previous usable rows and the old marker intact. Users never need to delete SQLite manually.
+A successful full Rescan promotes normalization to 3 in the same transaction as catalog and inventory replacement. Cancellation or failure keeps the previous rows, inventory, scan metadata, and marker. No migration deletes or replaces the database manually.
 
-## Read-before-write compatibility inspection
+## Read-before-write compatibility
 
-Existing files are inspected through a private read-only, non-pooled connection before WAL or any other writable pragma is used. Validation checks SQLite integrity, the schema marker, structural schema version, version-specific required tables, and normalization version in that order. A newer structural marker is rejected before assumptions are made about its table layout. The resulting state controls both reads and the write gate:
+Existing files are inspected through a private read-only connection before WAL or any writable pragma. Integrity, marker count, supported schema, required base tables, version-specific inventory table, and normalization are validated. Schema 1 or 2 follows the known migration chain; current schema with old normalization is readable and requires Rescan; newer/corrupted indexes are preserved and writes remain blocked.
 
-- current schema/current normalization is compatible;
-- schema v1 follows the supported transactional migration;
-- current schema with older normalization remains readable and requires Rescan;
-- newer schema or normalization is unsupported and never written;
-- missing is a normal empty state and does not create a file at startup;
-- unreadable, structurally invalid, or corrupt data is preserved and blocks writes.
-
-The replacement path repeats inspection immediately before opening a writable connection. Recovery from unsupported or corrupted data is deliberately manual; see `diagnostics.md`.
 ## Tables
 
 ### `schema_info`
 
-One row containing:
-
-- `version INTEGER` — structural schema version;
-- `normalization_version INTEGER` — parser/canonical-data version.
-
-Unsupported structural versions fail fast instead of being interpreted silently.
+One structural `version` and one parser/domain `normalization_version`.
 
 ### `assets`
 
-Primary key `id` (case-insensitive) plus library root, name/canonical type, optional raw type, physical asset and JSON paths, thumbnail/preview paths, biome, region, normalized physical size, legacy scalar maximum resolution, structured width/height, texel density, average color, categories/tags JSON, and source last-write timestamp.
+The existing canonical metadata columns remain. Version 3 adds:
 
-The legacy `max_resolution` column remains during the version 2 compatibility window. New writes store its maximum dimension as well as `resolution_width` and `resolution_height`; reads prefer structured dimensions and fall back to the legacy scalar.
+- `inventory_json` — complete structured variants, LOD entries, texture sets/components, original paths, unclassified files, completeness, and issues;
+- `completeness`, `has_fbx`, `has_lods`, `has_billboard`, `has_atlas` — indexed filter projections;
+- `variant_count`, `lod_count`, `texture_set_count` — indexed/sort summary projections.
 
-Indexes support library root, physical folder, name, type, biome, and region lookups. `json_path` is unique.
+Indexes cover catalog fields plus completeness, FBX, LOD, Billboard, Atlas, and variant count. The JSON contains names and paths only, never file bytes.
 
-### `tags`
+### `asset_inventory_maps`
 
-Normalized tag values keyed by `(kind, value)` with case-insensitive value identity. Tag kind remains part of domain identity.
+A normalized projection of `(asset_id, map_type, set_kind, resolution, format, path)` with a cascading asset foreign key. The `(map_type, asset_id)` index supports future SQL map predicates without parsing JSON. Full candidate/issue fidelity remains in `inventory_json`.
 
-### `asset_tags`
+### `tags` / `asset_tags`
 
-Many-to-many links from assets to tags with cascading foreign keys. An index on `tag_id` supports tag filtering.
+Normalized typed tags and their cascading many-to-many links.
 
 ### `scan_state`
 
-Single row containing the committed library root, completion timestamp, and serialized successful-scan metadata: duration, status, added/updated/removed/skipped counts, and inaccessible-folder count. Readers retain a fallback for the earlier serialized `ScanResult` payload.
+The committed library root, completion timestamp, and stable successful-scan metadata. Older serialized `ScanResult` payloads remain readable.
 
 ## Full-scan transaction
 
-A temporary `current_scan_ids` table is created inside the transaction. Each resolved winner is upserted and its tag links replaced. Assets not present in the temporary table are counted and deleted only before the same transaction commits. Orphan tags are removed, `scan_state` is replaced, and `normalization_version` is promoted. Any parse-stage failure, cancellation, SQL failure, or pre-commit cancellation rolls the transaction back, leaving the previous usable index intact.
+A temporary `current_scan_ids` table tracks deterministic duplicate-ID winners. Each asset metadata row, inventory JSON, map projection, and tag relation is replaced inside one transaction. Stale assets cascade to inventory maps, orphan tags are removed, scan state is stored, and the normalization marker is promoted immediately before commit. Any error or cancellation rolls everything back.
 
-## Duplicate IDs
+## Identity and duplicates
 
-ID identity is case-insensitive. For every duplicate group, the winner is the lexicographically smallest normalized full JSON path using Windows ordinal-ignore-case comparison. Scan results retain the winner and every skipped full path. No physical files are changed.
-
-## Future compatibility
-
-Structural schema and normalization/parser versions are intentionally separate. Future column migrations can preserve readable rows while a new parser version requests an explicit full reparse before corrected metadata becomes authoritative.
+Asset IDs and Windows path comparisons are case-insensitive. Duplicate asset IDs use the documented lexicographically smallest normalized JSON path. Content duplicates are never silently selected: all candidates remain in inventory JSON and produce an explanatory ambiguity issue. Source files are never changed.

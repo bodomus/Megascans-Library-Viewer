@@ -38,4 +38,7 @@ internal static partial class ApplicationLog
     public static partial void DiagnosticsCopyFailed(
         ILogger logger,
         Exception exception);
+
+    [LoggerMessage(2006, LogLevel.Warning, "Saving inventory filter failed")]
+    public static partial void InventoryFilterSaveFailed(ILogger logger, Exception exception);
 }

@@ -1,4 +1,4 @@
-namespace ScanVault.Core.Models;
+﻿namespace ScanVault.Core.Models;
 
 /// <summary>Classifies normalized metadata attached to an asset.</summary>
 public enum AssetTagKind
@@ -35,10 +35,15 @@ public sealed record AssetSummary(
     DateTimeOffset LastWriteTimeUtc)
 {
     public string? RawAssetType { get; init; }
+    public IReadOnlyList<string> ReferencedContentPaths { get; init; } = [];
+    public AssetContentInventory Content { get; init; } = AssetContentInventory.Empty;
 }
 
 /// <summary>Persisted per-user application settings.</summary>
-public sealed record LibrarySettings(string LibraryRoot, AssetSortMode SortMode = AssetSortMode.NameAscending)
+public sealed record LibrarySettings(
+    string LibraryRoot,
+    AssetSortMode SortMode = AssetSortMode.NameAscending,
+    AssetInventoryFilter InventoryFilter = AssetInventoryFilter.None)
 {
     public static LibrarySettings Empty { get; } = new(string.Empty);
 }

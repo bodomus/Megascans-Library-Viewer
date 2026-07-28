@@ -1,20 +1,23 @@
-using ScanVault.Core.Models;
+﻿using ScanVault.Core.Models;
 
 namespace ScanVault.Core.Abstractions;
 
 /// <summary>Discovers metadata paths without parsing large asset payloads.</summary>
 public interface IFileSystemScanner
 {
-    Task<FileDiscoveryResult> DiscoverAsync(
-        string libraryRoot,
-        IProgress<ScanProgress>? progress,
-        CancellationToken cancellationToken);
+    Task<FileDiscoveryResult> DiscoverAsync(string libraryRoot, IProgress<ScanProgress>? progress, CancellationToken cancellationToken);
 }
 
 /// <summary>Parses a single legacy Megascans metadata document.</summary>
 public interface IAssetMetadataParser
 {
     Task<AssetParseResult> ParseAsync(string jsonPath, CancellationToken cancellationToken);
+}
+
+/// <summary>Inventories one asset folder without reading mesh or texture payloads.</summary>
+public interface IAssetContentInventoryService
+{
+    Task<AssetInventoryResult> InventoryAsync(AssetSummary asset, CancellationToken cancellationToken);
 }
 
 /// <summary>Provides transactional persistence and indexed browsing queries.</summary>
@@ -26,11 +29,7 @@ public interface IAssetIndex
     Task InitializeAsync(CancellationToken cancellationToken);
     Task<IndexDiagnostics> GetDiagnosticsAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<AssetSummary>> GetAssetsAsync(CancellationToken cancellationToken);
-    Task<IndexUpdateResult> ReplaceLibraryAsync(
-        string libraryRoot,
-        IReadOnlyList<AssetSummary> assets,
-        ScanResult draftResult,
-        CancellationToken cancellationToken);
+    Task<IndexUpdateResult> ReplaceLibraryAsync(string libraryRoot, IReadOnlyList<AssetSummary> assets, ScanResult draftResult, CancellationToken cancellationToken);
 }
 
 /// <summary>Persists settings outside the source repository.</summary>
@@ -43,8 +42,5 @@ public interface ISettingsStore
 /// <summary>Coordinates a complete, cancellable library refresh.</summary>
 public interface ILibraryScanService
 {
-    Task<ScanResult> ScanAsync(
-        LibrarySettings settings,
-        IProgress<ScanProgress>? progress,
-        CancellationToken cancellationToken);
+    Task<ScanResult> ScanAsync(LibrarySettings settings, IProgress<ScanProgress>? progress, CancellationToken cancellationToken);
 }

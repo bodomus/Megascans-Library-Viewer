@@ -1,4 +1,4 @@
-using ScanVault.Core.Models;
+﻿using ScanVault.Core.Models;
 
 namespace ScanVault.Core.Policies;
 
@@ -31,6 +31,10 @@ public static class AssetSorting
             AssetSortMode.AssetIdAscending => assets.OrderBy(
                 static asset => asset.Id,
                 StringComparer.OrdinalIgnoreCase),
+            AssetSortMode.Completeness => assets.OrderBy(static asset => CompletenessRank(asset.Content.Completeness)),
+            AssetSortMode.VariantCountDescending => assets.OrderByDescending(static asset => asset.Content.VariantCount),
+            AssetSortMode.LodCountDescending => assets.OrderByDescending(static asset => asset.Content.LodCount),
+            AssetSortMode.TextureSetCountDescending => assets.OrderByDescending(static asset => asset.Content.TextureSetCount),
             _ => assets.OrderBy(
                 static asset => asset.Name,
                 StringComparer.OrdinalIgnoreCase)
@@ -42,5 +46,14 @@ public static class AssetSorting
             .ThenBy(static asset => asset.AssetFolderPath, StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
-}
 
+    private static int CompletenessRank(AssetCompletenessStatus status) => status switch
+    {
+        AssetCompletenessStatus.Complete => 0,
+        AssetCompletenessStatus.Usable => 1,
+        AssetCompletenessStatus.Partial => 2,
+        AssetCompletenessStatus.MissingCriticalFiles => 3,
+        AssetCompletenessStatus.Ambiguous => 4,
+        _ => 5
+    };
+}

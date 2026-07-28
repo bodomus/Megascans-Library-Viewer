@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -47,7 +47,7 @@ public sealed class SqliteCompatibilityTests
         Assert.Equal(IndexCompatibilityState.RequiresMigration, before.State);
         Assert.Equal(1, before.DatabaseSchemaVersion);
         Assert.Equal(IndexCompatibilityState.RequiresRescan, index.Compatibility.State);
-        Assert.Equal(2, index.Compatibility.DatabaseSchemaVersion);
+        Assert.Equal(SqliteAssetIndex.CurrentSchemaVersion, index.Compatibility.DatabaseSchemaVersion);
         Assert.Equal(1, index.Compatibility.MetadataNormalizationVersion);
     }
 

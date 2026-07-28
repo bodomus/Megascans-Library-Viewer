@@ -1,6 +1,6 @@
-# ScanVault
+﻿# ScanVault
 
-ScanVault is a Windows desktop viewer and local indexer for legacy Quixel Megascans libraries. It reads JSON metadata and local preview images without changing or copying source assets.
+ScanVault is a Windows desktop viewer and local indexer for legacy Quixel Megascans libraries. It reads JSON metadata, local previews, mesh/texture filenames, and folder structure without changing or copying source assets.
 
 ## Current features
 
@@ -9,8 +9,11 @@ ScanVault is a Windows desktop viewer and local indexer for legacy Quixel Megasc
 - schema-aware legacy Megascans parsing and canonical metadata normalization;
 - transactional, versioned SQLite index with automatic v1 migration and corrective-rescan marker;
 - deterministic duplicate-ID resolution and reporting;
+- bounded, cancellable content inventory for FBX/ABC variants, arbitrary LODs, texture maps, resolutions, Atlas, and Billboard sets;
+- explicit per-kind Complete/Usable/Partial/MissingCriticalFiles/Ambiguous/Unknown validation;
+- compact card badges, hover summaries, and a detailed read-only inventory window with copy/open-folder actions;
 - physical folder tree with descendant-inclusive counts and filtering;
-- case-insensitive catalog search and eight persistent deterministic sort modes;
+- case-insensitive metadata/content search, seven persistent inventory filters, and twelve deterministic sort modes;
 - virtualized thumbnail grid with asynchronous bounded image cache;
 - persistent single-card selection, delayed normalized hover details, and context actions;
 - keyboard navigation with `Enter` preview, `Esc` close, and list-scoped `Ctrl+C` folder copy;
@@ -48,7 +51,7 @@ These paths are outside both the repository and the scanned library. Existing ve
 
 ## Architecture
 
-`ScanVault.Core` owns models, contracts, and deterministic normalization/catalog policies. `ScanVault.Infrastructure` owns filesystem discovery, schema-aware JSON parsing, settings, scan orchestration, and SQLite. `ScanVault.App` owns WPF composition, views, view models, commands, virtualization, image presentation, clipboard, and Explorer interaction. See `Docs/architecture.md`, `Docs/index-format.md`, `Docs/diagnostics.md`, and `Docs/versioning-and-ci.md`.
+`ScanVault.Core` owns models, contracts, and deterministic normalization/catalog policies. `ScanVault.Infrastructure` owns filesystem discovery, schema-aware JSON parsing, settings, scan orchestration, and SQLite. `ScanVault.App` owns WPF composition, views, view models, commands, virtualization, image presentation, clipboard, and Explorer interaction. See `Docs/architecture.md`, `Docs/index-format.md`, `Docs/content-inventory.md`, `Docs/diagnostics.md`, and `Docs/versioning-and-ci.md`.
 
 ## Version and CI
 
@@ -62,6 +65,6 @@ Non-trivial tickets follow `.codex/PRE_TICKET_WORKFLOW.md`: Graphify for archite
 
 - Windows-only WPF application;
 - no Unreal/Fab integration, import, editing, moving, or deleting assets;
-- no virtual grouping trees, texture-map tabs, zoom/pan, installer, or updater;
+- no virtual grouping trees, mesh/material renderer, zoom/pan, installer, or updater;
 - metadata support is intentionally tolerant and may omit unknown legacy fields;
 - advanced query syntax and multi-selection are not supported.

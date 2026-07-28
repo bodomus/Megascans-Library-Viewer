@@ -1,4 +1,4 @@
-# ScanVault architecture
+﻿# ScanVault architecture
 
 ## Boundaries
 
@@ -31,9 +31,18 @@ Raw Megascans JSON
         -> WPF layout
 ```
 
+## Asset-content inventory flow
+
+After duplicate-ID resolution, `LibraryScanService` inventories only the deterministic winners. A bounded `Parallel.ForEachAsync` worker pool (maximum four assets) calls `AssetContentInventoryService`; each worker walks only its asset subtree, skips reparse points, records inaccessible directories, and passes file names/relative paths to the pure Core `AssetContentAnalyzer`. Mesh or image payloads are never opened.
+
+The analyzer uses complete case-insensitive `VarN`, `LODN`, map, resolution, Atlas, and Billboard tokens. It preserves every original full path, groups variants and texture sets, retains unclassified files, and emits explicit issues rather than guessing conflicts. JSON content-like references can supply set context and missing-reference evidence. The confirmed completeness profile is type-specific and lives in Core.
+
+Inventory returns to the original deterministic asset array before `SqliteAssetIndex.ReplaceLibraryAsync`. Metadata, full structured inventory JSON, indexed summary projections, map-type projections, scan state, stale-row deletion, and the normalization marker are committed together. Cancellation or any failure before commit leaves the previous metadata and content inventory intact.
+
+`AssetFiltering` and `AssetSorting` compose physical folder, plain search, persisted inventory flags, and twelve deterministic sort modes in memory. Cards precompute at most five small badges and concise hover strings. `ContentInventoryWindow` is a separate bounded read-only view; WPF code-behind owns only window lifecycle while view models own grouping and commands.
 ## Catalog state and navigation
 
-Filtering, search, and sorting compose in memory over the indexed `AssetSummary` read model. Search covers name, exact ID, canonical type, categories, typed tags, biome, and region. `AssetSorting` owns the eight stable logic modes and always uses ID then folder path as tie-breakers. The chosen enum value is persisted with the per-user settings; display labels are presentation data only.
+Filtering, search, and sorting compose in memory over the indexed `AssetSummary` read model. Search covers name, exact ID, canonical type, categories, typed tags, biome, region, mesh/texture filenames, map types, completeness, issues, variants, and LOD labels. `AssetSorting` owns twelve stable logic modes and always uses ID then folder path as tie-breakers. The chosen enum value is persisted with the per-user settings; display labels are presentation data only.
 
 `AssetFiltering.BuildFolderTree` derives physical navigation and descendant-inclusive counts from indexed paths, never from a synchronous UI-thread filesystem walk. A selected card is restored after filter/sort rebuilds using `(ID, JSON path)` identity and clears when that identity is no longer visible.
 
