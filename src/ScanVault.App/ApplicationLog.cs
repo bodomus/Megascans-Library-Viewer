@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 
 namespace ScanVault.App;
 
@@ -41,4 +41,10 @@ internal static partial class ApplicationLog
 
     [LoggerMessage(2006, LogLevel.Warning, "Saving inventory filter failed")]
     public static partial void InventoryFilterSaveFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(2007, LogLevel.Warning, "Loading scan history failed")]
+    public static partial void ScanHistoryLoadFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(2008, LogLevel.Warning, "Loading scan changes failed")]
+    public static partial void ScanChangesLoadFailed(ILogger logger, Exception exception);
 }

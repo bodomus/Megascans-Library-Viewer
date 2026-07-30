@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using ScanVault.Core.Models;
@@ -76,7 +76,7 @@ public sealed partial class SqliteAssetIndex
                 return CorruptedCompatibility("Required index tables are missing.");
             }
 
-            if (schemaVersion is 1 or 2)
+            if (schemaVersion is 1 or 2 or 3)
             {
                 return new(
                     IndexCompatibilityState.RequiresMigration,
@@ -96,6 +96,14 @@ public sealed partial class SqliteAssetIndex
             if (!await TableExistsAsync(connection, "asset_inventory_maps", cancellationToken).ConfigureAwait(false))
             {
                 return CorruptedCompatibility("Required inventory index table is missing.");
+            }
+
+            foreach (var historyTable in new[] { "scan_runs", "scan_asset_snapshots", "scan_changes" })
+            {
+                if (!await TableExistsAsync(connection, historyTable, cancellationToken).ConfigureAwait(false))
+                {
+                    return CorruptedCompatibility($"Required scan history table {historyTable} is missing.");
+                }
             }
 
             var normalizationVersion = Convert.ToInt32(
@@ -213,6 +221,11 @@ public sealed partial class SqliteAssetIndex
         if (fromVersion == 2)
         {
             await MigrateVersionTwoAsync(connection, cancellationToken).ConfigureAwait(false);
+            fromVersion = 3;
+        }
+        if (fromVersion == 3)
+        {
+            await MigrateVersionThreeAsync(connection, cancellationToken).ConfigureAwait(false);
         }
         InfrastructureLog.IndexMigrationCompleted(logger, resolvedPaths.DatabasePath, CurrentSchemaVersion);
     }

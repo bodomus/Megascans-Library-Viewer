@@ -33,6 +33,7 @@ public sealed class LibraryScanServiceTests
             scanner,
             parser,
             index,
+            new TestBuildInfo(),
             NullLogger<LibraryScanService>.Instance);
 
         var result = await service.ScanAsync(
@@ -112,18 +113,36 @@ public sealed class LibraryScanServiceTests
         public Task<IndexDiagnostics> GetDiagnosticsAsync(CancellationToken cancellationToken) =>
             Task.FromResult(new IndexDiagnostics(Compatibility, CommittedAssets.Count, null));
 
-        public Task<IReadOnlyList<AssetSummary>> GetAssetsAsync(
-            CancellationToken cancellationToken) =>
+        public Task<IReadOnlyList<AssetSummary>> GetAssetsAsync(CancellationToken cancellationToken) =>
             Task.FromResult(CommittedAssets);
+
+        public Task<string> BeginScanRunAsync(string libraryRoot, string applicationVersion, string commitSha, CancellationToken cancellationToken) =>
+            Task.FromResult("scan-run");
+
+        public Task FinishScanRunAsync(string scanRunId, ScanRunStatus status, string? errorMessage, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task<IReadOnlyList<ScanRunSummary>> GetScanRunsAsync(int limit, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<ScanRunSummary>>([]);
+
+        public Task<IReadOnlyList<ScanChangeSummary>> GetScanChangesAsync(string scanRunId, AssetChangeKind kind, int limit, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<ScanChangeSummary>>([]);
 
         public Task<IndexUpdateResult> ReplaceLibraryAsync(
             string libraryRoot,
             IReadOnlyList<AssetSummary> assets,
             ScanResult draftResult,
+            string scanRunId,
             CancellationToken cancellationToken)
         {
             CommittedAssets = assets;
             return Task.FromResult(update);
         }
+    }
+
+    private sealed class TestBuildInfo : IScanBuildInfoProvider
+    {
+        public string ApplicationVersion => "test";
+        public string CommitSha => "testsha";
     }
 }

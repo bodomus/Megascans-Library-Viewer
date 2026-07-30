@@ -47,3 +47,13 @@ A temporary `current_scan_ids` table tracks deterministic duplicate-ID winners. 
 ## Identity and duplicates
 
 Asset IDs and Windows path comparisons are case-insensitive. Duplicate asset IDs use the documented lexicographically smallest normalized JSON path. Content duplicates are never silently selected: all candidates remain in inventory JSON and produce an explanatory ambiguity issue. Source files are never changed.
+
+## Scan history and change detection
+
+Schema version 4 adds persistent scan history. Each explicit Rescan creates a `scan_runs` row in `Running` state before file discovery starts. Successful replacement completes that row in the same SQLite transaction that replaces `assets`, stores per-asset snapshots in `scan_asset_snapshots`, writes classified rows to `scan_changes`, updates the singleton `scan_state`, and promotes the normalization marker. Cancelled or failed runs are finalized separately and are never eligible baselines.
+
+Change detection compares the latest completed run for the same normalized library root and current fingerprint version. The first completed run for a library is marked as an initial baseline and all current assets are reported as `Added`.
+
+`ScanVault` detects logical changes using indexed metadata, content inventory, and physical file properties. It does not compare binary file contents. Fingerprint version 1 includes canonical metadata, relative paths, resolution, structured content inventory, completeness, and file facts for known JSON/preview/inventory paths: normalized relative path, file size, and last-write UTC.
+
+Retention keeps the last 20 completed runs per library and a bounded set of failed/cancelled runs. Deleting old runs cascades their snapshots and changes.

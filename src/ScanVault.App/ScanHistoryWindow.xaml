@@ -1,0 +1,47 @@
+﻿<Window x:Class="ScanVault.App.ScanHistoryWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Scan History" Width="980" Height="620" MinWidth="760" MinHeight="460"
+        Background="{StaticResource WindowBackground}" Foreground="{StaticResource TextPrimary}">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="220" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <DataGrid Grid.Row="0" ItemsSource="{Binding Runs}" SelectedItem="{Binding SelectedRun, Mode=TwoWay}"
+                  AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single"
+                  EnableRowVirtualization="True" EnableColumnVirtualization="True">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Date/time" Binding="{Binding StartedAtUtc}" Width="170" />
+                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="90" />
+                <DataGridTextColumn Header="Duration" Binding="{Binding Duration}" Width="90" />
+                <DataGridTextColumn Header="Total" Binding="{Binding TotalAssets}" Width="70" />
+                <DataGridTextColumn Header="Added" Binding="{Binding AddedAssets}" Width="70" />
+                <DataGridTextColumn Header="Changed" Binding="{Binding ChangedAssets}" Width="80" />
+                <DataGridTextColumn Header="Removed" Binding="{Binding RemovedAssets}" Width="80" />
+                <DataGridTextColumn Header="App" Binding="{Binding ApplicationVersion}" Width="90" />
+                <DataGridTextColumn Header="Error" Binding="{Binding ErrorMessage}" Width="*" />
+            </DataGrid.Columns>
+        </DataGrid>
+        <DockPanel Grid.Row="1" Margin="0,10,0,8">
+            <Button DockPanel.Dock="Right" Content="Open asset" Command="{Binding OpenAssetCommand}" Padding="14,6" />
+            <ComboBox Width="170" ItemsSource="{Binding ChangeKinds}" DisplayMemberPath="Label" SelectedValuePath="Kind" SelectedValue="{Binding SelectedKind, Mode=TwoWay}" />
+        </DockPanel>
+        <DataGrid Grid.Row="2" ItemsSource="{Binding Changes}" SelectedItem="{Binding SelectedChange, Mode=TwoWay}"
+                  AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single"
+                  EnableRowVirtualization="True" EnableColumnVirtualization="True" MouseDoubleClick="OnChangeDoubleClick">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="180" />
+                <DataGridTextColumn Header="Asset ID" Binding="{Binding AssetId}" Width="130" />
+                <DataGridTextColumn Header="Type" Binding="{Binding AssetType}" Width="100" />
+                <DataGridTextColumn Header="Previous path" Binding="{Binding PreviousPath}" Width="220" />
+                <DataGridTextColumn Header="Current path" Binding="{Binding CurrentPath}" Width="220" />
+                <DataGridTextColumn Header="Change reason" Binding="{Binding Flags}" Width="120" />
+                <DataGridTextColumn Header="Completeness" Binding="{Binding Completeness}" Width="120" />
+            </DataGrid.Columns>
+        </DataGrid>
+        <TextBlock Grid.Row="3" Text="{Binding StatusText}" Foreground="{StaticResource TextSecondary}" Margin="0,8,0,0" TextTrimming="CharacterEllipsis" />
+    </Grid>
+</Window>

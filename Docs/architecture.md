@@ -85,3 +85,9 @@ At build time, CI supplies its run suffix and short commit SHA as MSBuild proper
 The App composition root registers that build information once. `MainViewModel` exposes a compact product-version title without the SHA, while the structured startup event records product and informational versions, commit, configuration, runtime, OS, and process architecture. Missing optional metadata has explicit fallbacks and cannot prevent startup.
 
 The Windows GitHub Actions workflow validates restore, Release build, tests, formatting, and whitespace for pushes and pull requests. Release publishing, packaging, repository writes, and branch-setting mutations are outside this workflow. See `versioning-and-ci.md` for exact version semantics and branch-protection guidance.
+
+## Scan History
+
+`Scan History` opens from the main toolbar. The window lists recent scan runs newest first with status, duration, totals, application version, and error text for failed/cancelled runs. Selecting a completed run loads change details by category: `Added`, `Changed`, `Removed`, or `Unchanged`. Detail rows show name, asset ID, type, previous/current relative paths, change reason, and completeness. Existing assets can be opened from the history view; removed assets cannot.
+
+After Rescan the main status line shows Added/Changed/Removed/Unchanged counts and marks the first successful run for a library as `Initial baseline`.

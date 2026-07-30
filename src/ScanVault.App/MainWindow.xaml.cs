@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -27,6 +27,33 @@ public partial class MainWindow : Window
             DataContext = DataContext
         };
         window.ShowDialog();
+    }
+
+    private async void OnScanHistoryClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel viewModel)
+        {
+            return;
+        }
+
+        try
+        {
+            var history = await viewModel.CreateScanHistoryViewModelAsync(CancellationToken.None);
+            var window = new ScanHistoryWindow
+            {
+                Owner = this,
+                DataContext = history
+            };
+            window.Show();
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(
+                $"Scan History could not be opened.{Environment.NewLine}{exception.Message}",
+                "ScanVault scan history",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
     }
 
     private async void OnDiagnosticsClick(object sender, RoutedEventArgs e)

@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
+using ScanVault.Core.Abstractions;
 
 namespace ScanVault.App.Services;
 
@@ -10,11 +11,13 @@ public sealed record ApplicationBuildInfo(
     string BuildConfiguration,
     string RuntimeVersion,
     string OperatingSystem,
-    string ProcessArchitecture)
+    string ProcessArchitecture) : IScanBuildInfoProvider
 {
     public const string ProductName = "ScanVault \u2014 Megascans Library Viewer";
     public const string UnknownValue = "Unknown";
     public const string UnavailableCommit = "unavailable";
+
+    public string ApplicationVersion => ProductVersion;
 
     public string WindowTitle => ProductVersion == UnknownValue
         ? ProductName

@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using ScanVault.Core.Abstractions;
@@ -11,6 +11,7 @@ public sealed class LibraryScanService(
     IFileSystemScanner scanner,
     IAssetMetadataParser parser,
     IAssetIndex index,
+    IScanBuildInfoProvider buildInfo,
     ILogger<LibraryScanService> logger,
     IAssetContentInventoryService? inventoryService = null) : ILibraryScanService
 {
@@ -27,6 +28,8 @@ public sealed class LibraryScanService(
         var stopwatch = Stopwatch.StartNew();
         var root = PathPolicy.Normalize(settings.LibraryRoot);
         InfrastructureLog.ScanStarted(logger, root);
+        var scanRunId = await index.BeginScanRunAsync(root, buildInfo.ApplicationVersion, buildInfo.CommitSha, cancellationToken)
+            .ConfigureAwait(false);
 
         try
         {
@@ -117,13 +120,17 @@ public sealed class LibraryScanService(
                     draft.TextureFilesFound, draft.AmbiguousAssets, draft.AssetsMissingCriticalFiles);
             }
             progress?.Report(new(ScanPhase.Committing, discovery.MetadataFiles.Count, processed, root));
-            var update = await index.ReplaceLibraryAsync(root, assets, draft, cancellationToken).ConfigureAwait(false);
+            var update = await index.ReplaceLibraryAsync(root, assets, draft, scanRunId, cancellationToken).ConfigureAwait(false);
             stopwatch.Stop();
             var result = draft with
             {
                 AddedAssets = update.AddedAssets,
                 UpdatedAssets = update.UpdatedAssets,
                 RemovedAssets = update.RemovedAssets,
+                ChangedAssets = update.ChangedAssets,
+                UnchangedAssets = update.UnchangedAssets,
+                IsInitialBaseline = update.IsInitialBaseline,
+                ScanRunId = update.ScanRunId,
                 Elapsed = stopwatch.Elapsed
             };
             progress?.Report(new(ScanPhase.Completed, discovery.MetadataFiles.Count, processed, root));
@@ -132,11 +139,13 @@ public sealed class LibraryScanService(
         }
         catch (OperationCanceledException)
         {
+            await index.FinishScanRunAsync(scanRunId, ScanRunStatus.Cancelled, "Scan cancelled by user.", CancellationToken.None).ConfigureAwait(false);
             InfrastructureLog.ScanCancelled(logger, root);
             throw;
         }
         catch (Exception exception)
         {
+            await index.FinishScanRunAsync(scanRunId, ScanRunStatus.Failed, exception.Message, CancellationToken.None).ConfigureAwait(false);
             InfrastructureLog.ScanFailed(logger, root, exception);
             throw;
         }

@@ -1,4 +1,4 @@
-﻿using ScanVault.Core.Models;
+using ScanVault.Core.Models;
 
 namespace ScanVault.Core.Abstractions;
 
@@ -29,7 +29,11 @@ public interface IAssetIndex
     Task InitializeAsync(CancellationToken cancellationToken);
     Task<IndexDiagnostics> GetDiagnosticsAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<AssetSummary>> GetAssetsAsync(CancellationToken cancellationToken);
-    Task<IndexUpdateResult> ReplaceLibraryAsync(string libraryRoot, IReadOnlyList<AssetSummary> assets, ScanResult draftResult, CancellationToken cancellationToken);
+    Task<string> BeginScanRunAsync(string libraryRoot, string applicationVersion, string commitSha, CancellationToken cancellationToken);
+    Task FinishScanRunAsync(string scanRunId, ScanRunStatus status, string? errorMessage, CancellationToken cancellationToken);
+    Task<IReadOnlyList<ScanRunSummary>> GetScanRunsAsync(int limit, CancellationToken cancellationToken);
+    Task<IReadOnlyList<ScanChangeSummary>> GetScanChangesAsync(string scanRunId, AssetChangeKind kind, int limit, CancellationToken cancellationToken);
+    Task<IndexUpdateResult> ReplaceLibraryAsync(string libraryRoot, IReadOnlyList<AssetSummary> assets, ScanResult draftResult, string scanRunId, CancellationToken cancellationToken);
 }
 
 /// <summary>Persists settings outside the source repository.</summary>
