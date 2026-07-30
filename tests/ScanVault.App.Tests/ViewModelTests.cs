@@ -319,10 +319,23 @@ public sealed class ViewModelTests : IDisposable
             CancellationToken cancellationToken) =>
             Task.FromResult(assets);
 
+        public Task<string> BeginScanRunAsync(string libraryRoot, string applicationVersion, string commitSha, CancellationToken cancellationToken) =>
+            Task.FromResult("scan-run");
+
+        public Task FinishScanRunAsync(string scanRunId, ScanRunStatus status, string? errorMessage, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task<IReadOnlyList<ScanRunSummary>> GetScanRunsAsync(int limit, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<ScanRunSummary>>([]);
+
+        public Task<IReadOnlyList<ScanChangeSummary>> GetScanChangesAsync(string scanRunId, AssetChangeKind kind, int limit, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<ScanChangeSummary>>([]);
+
         public Task<IndexUpdateResult> ReplaceLibraryAsync(
             string libraryRoot,
             IReadOnlyList<AssetSummary> replacement,
             ScanResult draftResult,
+            string scanRunId,
             CancellationToken cancellationToken) =>
             Task.FromResult(new IndexUpdateResult(0, 0, 0));
     }

@@ -26,6 +26,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly ILogger<MainViewModel> logger;
     private readonly ILogger<AssetCardViewModel> cardLogger;
     private readonly ILogger<DiagnosticsViewModel> diagnosticsLogger;
+    private readonly ILogger<ScanHistoryViewModel> scanHistoryLogger;
     private IReadOnlyList<AssetSummary> allAssets = [];
     private CancellationTokenSource? scanCancellation;
     private bool disposed;
@@ -60,6 +61,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         this.logger = logger;
         cardLogger = loggerFactory.CreateLogger<AssetCardViewModel>();
         diagnosticsLogger = loggerFactory.CreateLogger<DiagnosticsViewModel>();
+        scanHistoryLogger = loggerFactory.CreateLogger<ScanHistoryViewModel>();
         Settings = new(settingsStore);
         WindowTitle = buildInfo.WindowTitle;
         ProductVersion = buildInfo.ProductVersion;
@@ -235,6 +237,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         RebuildNavigation();
         StatusText = DescribeStartupStatus(index.Compatibility, allAssets.Count);
         NotifyCommandStates();
+    }
+
+    public async Task<ScanHistoryViewModel> CreateScanHistoryViewModelAsync(CancellationToken cancellationToken)
+    {
+        var viewModel = new ScanHistoryViewModel(index, NavigateToAssetFromHistory, scanHistoryLogger);
+        await viewModel.LoadAsync(cancellationToken);
+        return viewModel;
     }
 
     public async Task<DiagnosticsViewModel> CreateDiagnosticsViewModelAsync(
@@ -418,6 +427,23 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    private void NavigateToAssetFromHistory(string assetId)
+    {
+        var asset = allAssets.FirstOrDefault(item => StringComparer.OrdinalIgnoreCase.Equals(item.Id, assetId));
+        if (asset is null)
+        {
+            StatusText = $"Asset {assetId} is no longer in the current index.";
+            return;
+        }
+
+        SearchText = string.Empty;
+        SelectedFolderPath = null;
+        RefreshVisibleAssets();
+        SelectedCard = Assets.FirstOrDefault(card => StringComparer.OrdinalIgnoreCase.Equals(card.Asset.Id, assetId));
+        StatusText = SelectedCard is null
+            ? $"Asset {assetId} is hidden by current filters."
+            : $"Selected {asset.Name} from scan history.";
+    }
     private void RequestContentInventory(AssetSummary asset) =>
         ContentInventoryRequested?.Invoke(new ContentInventoryViewModel(asset, interactions, logger));
     private void CancelScan()

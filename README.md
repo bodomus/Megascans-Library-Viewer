@@ -1,4 +1,4 @@
-﻿# ScanVault
+# ScanVault
 
 ScanVault is a Windows desktop viewer and local indexer for legacy Quixel Megascans libraries. It reads JSON metadata, local previews, mesh/texture filenames, and folder structure without changing or copying source assets.
 
@@ -19,6 +19,7 @@ ScanVault is a Windows desktop viewer and local indexer for legacy Quixel Megasc
 - keyboard navigation with `Enter` preview, `Esc` close, and list-scoped `Ctrl+C` folder copy;
 - existing-index load at startup with no automatic rescan;
 - compact About / Diagnostics report with stable clipboard output;
+- persisted scan history with Added/Changed/Removed/Unchanged change detection and a read-only Scan History window;
 - explicit read-before-write index compatibility states that preserve newer or corrupted databases.
 
 ## Prerequisites
@@ -66,5 +67,6 @@ Non-trivial tickets follow `.codex/PRE_TICKET_WORKFLOW.md`: Graphify for archite
 - Windows-only WPF application;
 - no Unreal/Fab integration, import, editing, moving, or deleting assets;
 - no virtual grouping trees, mesh/material renderer, zoom/pan, installer, or updater;
+- scan history detects logical metadata/content/file-property changes, not binary file-content diffs;
 - metadata support is intentionally tolerant and may omit unknown legacy fields;
 - advanced query syntax and multi-selection are not supported.

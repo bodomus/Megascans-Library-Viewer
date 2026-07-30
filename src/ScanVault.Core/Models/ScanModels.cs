@@ -1,4 +1,4 @@
-﻿namespace ScanVault.Core.Models;
+namespace ScanVault.Core.Models;
 
 public enum ScanPhase
 {
@@ -25,7 +25,7 @@ public sealed record AssetParseResult(AssetParseStatus Status, AssetSummary? Ass
 
 public sealed record DuplicateAssetGroup(string AssetId, string WinnerJsonPath, IReadOnlyList<string> SkippedCopyJsonPaths);
 public sealed record DuplicateResolution(IReadOnlyList<AssetSummary> Assets, IReadOnlyList<DuplicateAssetGroup> DuplicateGroups);
-public sealed record IndexUpdateResult(int AddedAssets, int UpdatedAssets, int RemovedAssets);
+public sealed record IndexUpdateResult(int AddedAssets, int UpdatedAssets, int RemovedAssets, int ChangedAssets = 0, int UnchangedAssets = 0, bool IsInitialBaseline = false, string? ScanRunId = null);
 
 public sealed record ScanResult(
     int AddedAssets,
@@ -44,4 +44,8 @@ public sealed record ScanResult(
     public int TextureFilesFound { get; init; }
     public int AmbiguousAssets { get; init; }
     public int AssetsMissingCriticalFiles { get; init; }
+    public int ChangedAssets { get; init; }
+    public int UnchangedAssets { get; init; }
+    public bool IsInitialBaseline { get; init; }
+    public string? ScanRunId { get; init; }
 }

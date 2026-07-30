@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ScanVault.App.Services;
 using ScanVault.App.ViewModels;
+using ScanVault.Core.Abstractions;
 using ScanVault.Infrastructure;
 
 namespace ScanVault.App;
@@ -28,6 +29,7 @@ public partial class App : Application
                 {
                     services.AddScanVaultInfrastructure();
                     services.AddSingleton(ApplicationBuildInfo.FromAssembly(typeof(App).Assembly));
+                    services.AddSingleton<IScanBuildInfoProvider>(provider => provider.GetRequiredService<ApplicationBuildInfo>());
                     services.AddSingleton<IImageLoader, BoundedImageLoader>();
                     services.AddSingleton<IAssetInteractionService, DesktopAssetInteractionService>();
                     services.AddSingleton<DiagnosticsService>();
