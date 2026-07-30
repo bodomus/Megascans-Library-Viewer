@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using ScanVault.Core.Abstractions;
 using ScanVault.Infrastructure.Configuration;
 using ScanVault.Infrastructure.Parsing;
@@ -20,6 +20,7 @@ public static class DependencyInjection
         services.AddSingleton<IAssetContentInventoryService, AssetContentInventoryService>();
         services.AddSingleton<IAssetIndex, SqliteAssetIndex>();
         services.AddSingleton<ISettingsStore, JsonSettingsStore>();
+        services.AddSingleton<ISmartCollectionStore, JsonSmartCollectionStore>();
         services.AddSingleton<ILibraryScanService, LibraryScanService>();
         return services;
     }

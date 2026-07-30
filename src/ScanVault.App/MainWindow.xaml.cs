@@ -29,6 +29,62 @@ public partial class MainWindow : Window
         window.ShowDialog();
     }
 
+    private async void OnSaveSmartCollectionClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel viewModel)
+        {
+            return;
+        }
+
+        var editor = viewModel.CreateSmartCollectionEditorForCurrentFilters();
+        if (ShowSmartCollectionDialog(editor) == true)
+        {
+            await viewModel.CreateSmartCollectionAsync(editor);
+        }
+    }
+
+    private async void OnEditSmartCollectionClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel viewModel)
+        {
+            return;
+        }
+
+        var editor = viewModel.CreateSmartCollectionEditorForSelected();
+        if (editor is not null && ShowSmartCollectionDialog(editor) == true)
+        {
+            await viewModel.EditSelectedSmartCollectionAsync(editor);
+        }
+    }
+
+    private async void OnDeleteSmartCollectionClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel { SelectedSmartCollection.IsUser: true } viewModel)
+        {
+            return;
+        }
+
+        var result = MessageBox.Show(
+            $"Delete smart collection '{viewModel.SelectedSmartCollection.Name}'?",
+            "ScanVault smart collections",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+        if (result == MessageBoxResult.Yes)
+        {
+            await viewModel.DeleteSelectedSmartCollectionAsync();
+        }
+    }
+
+    private bool? ShowSmartCollectionDialog(SmartCollectionEditorViewModel editor)
+    {
+        var window = new SmartCollectionDialogWindow
+        {
+            Owner = this,
+            DataContext = editor
+        };
+        return window.ShowDialog();
+    }
+
     private async void OnScanHistoryClick(object sender, RoutedEventArgs e)
     {
         if (DataContext is not MainViewModel viewModel)
@@ -104,6 +160,15 @@ public partial class MainWindow : Window
                 "ScanVault sorting",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
+        }
+    }
+
+    private void OnSmartCollectionDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (DataContext is MainViewModel viewModel && viewModel.ApplySmartCollectionCommand.CanExecute(null))
+        {
+            viewModel.ApplySmartCollectionCommand.Execute(null);
+            e.Handled = true;
         }
     }
 

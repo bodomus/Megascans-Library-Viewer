@@ -43,6 +43,13 @@ public interface ISettingsStore
     Task SaveAsync(LibrarySettings settings, CancellationToken cancellationToken);
 }
 
+/// <summary>Persists user-defined smart collection definitions outside the asset index.</summary>
+public interface ISmartCollectionStore
+{
+    Task<IReadOnlyList<SmartCollectionRecord>> LoadAsync(CancellationToken cancellationToken);
+    Task SaveAsync(IReadOnlyList<SmartCollectionRecord> collections, CancellationToken cancellationToken);
+}
+
 /// <summary>Coordinates a complete, cancellable library refresh.</summary>
 public interface ILibraryScanService
 {

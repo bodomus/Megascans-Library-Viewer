@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 
 namespace ScanVault.App;
 
@@ -47,4 +47,16 @@ internal static partial class ApplicationLog
 
     [LoggerMessage(2008, LogLevel.Warning, "Loading scan changes failed")]
     public static partial void ScanChangesLoadFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(2009, LogLevel.Warning, "Loading smart collections failed")]
+    public static partial void SmartCollectionsLoadFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(2010, LogLevel.Information, "Smart collection {Action} {CollectionId} {CollectionName}")]
+    public static partial void SmartCollectionChanged(ILogger logger, string action, string collectionId, string collectionName);
+
+    [LoggerMessage(2011, LogLevel.Information, "Smart collection applied {CollectionId} {CollectionName}")]
+    public static partial void SmartCollectionApplied(ILogger logger, string collectionId, string collectionName);
+
+    [LoggerMessage(2012, LogLevel.Warning, "Smart collection count refresh failed")]
+    public static partial void SmartCollectionCountRefreshFailed(ILogger logger, Exception exception);
 }

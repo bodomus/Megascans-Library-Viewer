@@ -45,7 +45,7 @@ public sealed class MainWindowTests
                 window.Show();
                 window.UpdateLayout();
 
-                var listBox = Assert.IsType<ListBox>(FindVisualChild<ListBox>(window));
+                var listBox = Assert.IsType<ListBox>(FindVisualChildByName<ListBox>(window, "AssetList"));
                 Assert.NotNull(listBox.ItemContainerGenerator.ContainerFromIndex(0));
                 Assert.Equal("ScanVault Test 9.8.7", window.Title);
 
@@ -102,6 +102,25 @@ public sealed class MainWindowTests
         }
     }
 
+    private static T? FindVisualChildByName<T>(DependencyObject parent, string name)
+        where T : FrameworkElement
+    {
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(parent); index++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, index);
+            if (child is T { Name: var childName } match && childName == name)
+            {
+                return match;
+            }
+
+            if (FindVisualChildByName<T>(child, name) is { } descendant)
+            {
+                return descendant;
+            }
+        }
+
+        return null;
+    }
     private static T? FindVisualChild<T>(DependencyObject parent)
         where T : DependencyObject
     {

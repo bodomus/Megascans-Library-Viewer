@@ -63,33 +63,105 @@
 
             <Border Grid.Column="0" Background="{StaticResource PanelBackground}"
                     BorderBrush="#343B46" BorderThickness="0,0,1,0" Padding="8">
-                <DockPanel>
-                    <TextBlock DockPanel.Dock="Top" Text="PHYSICAL FOLDERS"
-                               FontWeight="SemiBold" FontSize="12"
-                               Foreground="{StaticResource TextSecondary}"
-                               Margin="6,4,6,8" />
-                    <TreeView ItemsSource="{Binding Folders}"
-                              SelectedItemChanged="OnFolderSelected"
-                              Background="Transparent" BorderThickness="0"
-                              Foreground="{StaticResource TextPrimary}">
+                                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="150" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="130" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <DockPanel Grid.Row="0" Margin="6,4,6,6">
+                        <TextBlock DockPanel.Dock="Left" Text="SMART COLLECTIONS" FontWeight="SemiBold" FontSize="12" Foreground="{StaticResource TextSecondary}" />
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding ActiveSmartCollectionStateText}" FontSize="11" Foreground="{StaticResource Accent}" TextTrimming="CharacterEllipsis" />
+                    </DockPanel>
+
+                    <ListBox Grid.Row="1" ItemsSource="{Binding BuiltInSmartCollections}" SelectedItem="{Binding SelectedSmartCollection, Mode=TwoWay}"
+                             MouseDoubleClick="OnSmartCollectionDoubleClick" Background="Transparent" BorderThickness="0"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border CornerRadius="4" Padding="6,3" Margin="0,0,0,2" ToolTip="{Binding ToolTip}">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="Transparent" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsActive}" Value="True"><Setter Property="Background" Value="#34485F" /></DataTrigger>
+                                                <DataTrigger Binding="{Binding IsModified}" Value="True"><Setter Property="Background" Value="#4B3D2E" /></DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <DockPanel LastChildFill="True">
+                                        <TextBlock DockPanel.Dock="Right" Text="{Binding CountDisplay}" Foreground="{StaticResource TextSecondary}" Margin="8,0,0,0" />
+                                        <TextBlock Text="{Binding Name}" Foreground="{StaticResource TextPrimary}" TextTrimming="CharacterEllipsis" />
+                                    </DockPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <Grid Grid.Row="2" Margin="0,6,0,4">
+                        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                        <UniformGrid Grid.Row="0" Columns="4" Margin="0,0,0,4">
+                            <Button Content="Save" Click="OnSaveSmartCollectionClick" Padding="5,2" Margin="0,0,4,0" />
+                            <Button Content="Apply" Command="{Binding ApplySmartCollectionCommand}" Padding="5,2" Margin="0,0,4,0" />
+                            <Button Content="Edit" Click="OnEditSmartCollectionClick" Padding="5,2" Margin="0,0,4,0" />
+                            <Button Content="Del" Click="OnDeleteSmartCollectionClick" Padding="5,2" />
+                        </UniformGrid>
+                        <UniformGrid Grid.Row="1" Columns="4">
+                            <Button Content="Update" Command="{Binding UpdateActiveSmartCollectionCommand}" Padding="5,2" Margin="0,0,4,0" />
+                            <Button Content="Copy" Command="{Binding DuplicateSmartCollectionCommand}" Padding="5,2" Margin="0,0,4,0" />
+                            <Button Content="Reset" Command="{Binding ResetSmartCollectionCommand}" Padding="5,2" Margin="0,0,4,0" />
+                            <Button Content="Manual" Command="{Binding DeactivateSmartCollectionCommand}" Padding="5,2" />
+                        </UniformGrid>
+                    </Grid>
+
+                    <ListBox Grid.Row="3" ItemsSource="{Binding UserSmartCollections}" SelectedItem="{Binding SelectedSmartCollection, Mode=TwoWay}"
+                             MouseDoubleClick="OnSmartCollectionDoubleClick" Background="Transparent" BorderThickness="0"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border CornerRadius="4" Padding="6,3" Margin="0,0,0,2" ToolTip="{Binding ToolTip}">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="Transparent" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsActive}" Value="True"><Setter Property="Background" Value="#34485F" /></DataTrigger>
+                                                <DataTrigger Binding="{Binding IsModified}" Value="True"><Setter Property="Background" Value="#4B3D2E" /></DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <StackPanel>
+                                        <DockPanel LastChildFill="True">
+                                            <TextBlock DockPanel.Dock="Right" Text="{Binding CountDisplay}" Foreground="{StaticResource TextSecondary}" Margin="8,0,0,0" />
+                                            <TextBlock Text="{Binding Name}" Foreground="{StaticResource TextPrimary}" TextTrimming="CharacterEllipsis" />
+                                        </DockPanel>
+                                        <TextBlock Text="{Binding StatusDisplay}" Foreground="#FFB3A7" FontSize="10" TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <TextBlock Grid.Row="4" Text="PHYSICAL FOLDERS" FontWeight="SemiBold" FontSize="12" Foreground="{StaticResource TextSecondary}" Margin="6,8,6,8" />
+                    <TreeView Grid.Row="5" ItemsSource="{Binding Folders}" SelectedItemChanged="OnFolderSelected" Background="Transparent" BorderThickness="0" Foreground="{StaticResource TextPrimary}">
                         <TreeView.ItemContainerStyle>
                             <Style TargetType="TreeViewItem">
                                 <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
                                 <Style.Triggers>
-                                    <Trigger Property="IsSelected" Value="True">
-                                        <Setter Property="Foreground" Value="#D9DEE5" />
-                                    </Trigger>
+                                    <Trigger Property="IsSelected" Value="True"><Setter Property="Foreground" Value="#D9DEE5" /></Trigger>
                                 </Style.Triggers>
                             </Style>
                         </TreeView.ItemContainerStyle>
                         <TreeView.Resources>
-                            <HierarchicalDataTemplate DataType="{x:Type models:FolderNode}"
-                                                      ItemsSource="{Binding Children}">
+                            <HierarchicalDataTemplate DataType="{x:Type models:FolderNode}" ItemsSource="{Binding Children}">
                                 <TextBlock Text="{Binding DisplayName}" ToolTip="{Binding FullPath}" />
                             </HierarchicalDataTemplate>
                         </TreeView.Resources>
                     </TreeView>
-                </DockPanel>
+                </Grid>
             </Border>
 
             <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch"
@@ -313,4 +385,3 @@
         </Grid>
     </Grid>
 </Window>
-
