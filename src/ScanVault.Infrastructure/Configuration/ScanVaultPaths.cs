@@ -4,8 +4,21 @@ namespace ScanVault.Infrastructure.Configuration;
 public sealed record ScanVaultPaths(
     string DatabasePath,
     string SettingsPath,
+    string SmartCollectionsPath,
     string ThumbnailCacheDirectory)
 {
+    public ScanVaultPaths(
+        string databasePath,
+        string settingsPath,
+        string thumbnailCacheDirectory)
+        : this(
+            databasePath,
+            settingsPath,
+            Path.Combine(Path.GetDirectoryName(settingsPath) ?? string.Empty, "smart-collections.json"),
+            thumbnailCacheDirectory)
+    {
+    }
+
     public static ScanVaultPaths ForCurrentUser()
     {
         var localRoot = Path.Combine(
@@ -18,6 +31,7 @@ public sealed record ScanVaultPaths(
         return new(
             Path.Combine(localRoot, "scanvault.db"),
             Path.Combine(roamingRoot, "settings.json"),
+            Path.Combine(roamingRoot, "smart-collections.json"),
             Path.Combine(localRoot, "thumbnails"));
     }
 }

@@ -236,6 +236,7 @@ public sealed class ViewModelTests : IDisposable
             index,
             new NoOpScanService(),
             settingsStore,
+            new MemorySmartCollectionStore(),
             new NullImageLoader(),
             interactions,
             buildInfo,
@@ -285,6 +286,20 @@ public sealed class ViewModelTests : IDisposable
             [tag],
             [new AssetTag(AssetTagKind.Descriptive, tag)],
             DateTimeOffset.UnixEpoch);
+
+    private sealed class MemorySmartCollectionStore : ISmartCollectionStore
+    {
+        public IReadOnlyList<SmartCollectionRecord> Value { get; private set; } = [];
+
+        public Task<IReadOnlyList<SmartCollectionRecord>> LoadAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(Value);
+
+        public Task SaveAsync(IReadOnlyList<SmartCollectionRecord> collections, CancellationToken cancellationToken)
+        {
+            Value = collections.ToArray();
+            return Task.CompletedTask;
+        }
+    }
 
     private sealed class MemorySettingsStore(LibrarySettings settings) : ISettingsStore
     {
@@ -367,5 +382,3 @@ public sealed class ViewModelTests : IDisposable
         public void OpenFolder(string folderPath) { }
     }
 }
-
-

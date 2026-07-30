@@ -13,7 +13,7 @@ ScanVault is a Windows desktop viewer and local indexer for legacy Quixel Megasc
 - explicit per-kind Complete/Usable/Partial/MissingCriticalFiles/Ambiguous/Unknown validation;
 - compact card badges, hover summaries, and a detailed read-only inventory window with copy/open-folder actions;
 - physical folder tree with descendant-inclusive counts and filtering;
-- case-insensitive metadata/content search, seven persistent inventory filters, and twelve deterministic sort modes;
+- case-insensitive metadata/content search, seven persistent inventory filters, twelve deterministic sort modes, and saved smart collections;
 - virtualized thumbnail grid with asynchronous bounded image cache;
 - persistent single-card selection, delayed normalized hover details, and context actions;
 - keyboard navigation with `Enter` preview, `Esc` close, and list-scoped `Ctrl+C` folder copy;
@@ -45,10 +45,11 @@ dotnet run --project src/ScanVault.App/ScanVault.App.csproj
 ## User data
 
 - settings: `%AppData%\ScanVault\settings.json`;
+- saved smart collections: `%AppData%\ScanVault\smart-collections.json`;
 - SQLite index: `%LocalAppData%\ScanVault\scanvault.db`;
 - thumbnail cache location reserved at `%LocalAppData%\ScanVault\thumbnails`.
 
-These paths are outside both the repository and the scanned library. Existing version 1 databases migrate automatically; a populated older index remains usable and displays a concise request to run Rescan so source metadata can be normalized. Startup inspects existing databases read-only before any write. Newer unsupported or corrupted indexes are preserved and unsafe Rescan is disabled; see `Docs/diagnostics.md` for recovery guidance.
+These paths are outside both the repository and the scanned library. Smart collections store filter definitions, folder-scope rules, and optional sort preferences, not asset copies or static asset ID lists. Existing version 1 databases migrate automatically; a populated older index remains usable and displays a concise request to run Rescan so source metadata can be normalized. Startup inspects existing databases read-only before any write. Newer unsupported or corrupted indexes are preserved and unsafe Rescan is disabled; see `Docs/diagnostics.md` for recovery guidance.
 
 ## Architecture
 
