@@ -1,4 +1,4 @@
-ï»¿using System.Globalization;
+using System.Globalization;
 using System.Windows.Input;
 using System.Windows.Media;
 using Microsoft.Extensions.Logging;
@@ -14,6 +14,7 @@ public sealed class AssetCardViewModel : ObservableObject, IDisposable
     private readonly IImageLoader imageLoader;
     private CancellationTokenSource? imageCancellation;
     private CancellationTokenSource? hoverCancellation;
+    private bool disposed;
     private ImageSource? thumbnail;
     private bool isHoverOpen;
 
@@ -46,12 +47,12 @@ public sealed class AssetCardViewModel : ObservableObject, IDisposable
         {
             var categories = Asset.Categories.Where(category =>
                 !StringComparer.OrdinalIgnoreCase.Equals(MetadataNormalizer.ResolveAssetType([category]).Canonical, Asset.AssetType)).Take(2).ToArray();
-            return categories.Length == 0 ? Asset.AssetType : $"{Asset.AssetType} Â· {string.Join(" / ", categories)}";
+            return categories.Length == 0 ? Asset.AssetType : $"{Asset.AssetType} · {string.Join(" / ", categories)}";
         }
     }
 
-    public string CompactDetails => Asset.MaxResolution is { } resolution ? $"{resolution.ToCompactString()} Â· {IdDisplay}" : IdDisplay;
-    public string CategoriesDisplay => Asset.Categories.Count == 0 ? "â€”" : string.Join(" / ", Asset.Categories);
+    public string CompactDetails => Asset.MaxResolution is { } resolution ? $"{resolution.ToCompactString()} · {IdDisplay}" : IdDisplay;
+    public string CategoriesDisplay => Asset.Categories.Count == 0 ? "—" : string.Join(" / ", Asset.Categories);
     public string? BiomeDisplay => Asset.Biome;
     public string? RegionDisplay => Asset.Region;
     public string? PhysicalSizeDisplay => Asset.PhysicalSize;
@@ -85,7 +86,7 @@ public sealed class AssetCardViewModel : ObservableObject, IDisposable
         get
         {
             var lods = Asset.Content.Variants.SelectMany(static variant => variant.Meshes).Select(static mesh => mesh.Lod).Distinct().Order().ToArray();
-            return lods.Length == 0 ? "LODs: â€”" : $"LODs: {string.Join(", ", lods.Select(static lod => $"LOD{lod}"))}";
+            return lods.Length == 0 ? "LODs: —" : $"LODs: {string.Join(", ", lods.Select(static lod => $"LOD{lod}"))}";
         }
     }
     public string ContentMeshesDisplay
@@ -93,7 +94,7 @@ public sealed class AssetCardViewModel : ObservableObject, IDisposable
         get
         {
             var formats = Asset.Content.Variants.SelectMany(static variant => variant.Meshes).Select(static mesh => mesh.Format.ToString().ToUpperInvariant()).Distinct().Order().ToArray();
-            return formats.Length == 0 ? "Meshes: â€”" : $"Meshes: {string.Join(", ", formats)}";
+            return formats.Length == 0 ? "Meshes: —" : $"Meshes: {string.Join(", ", formats)}";
         }
     }
     public string ContentSetsDisplay
@@ -101,7 +102,7 @@ public sealed class AssetCardViewModel : ObservableObject, IDisposable
         get
         {
             var sets = Asset.Content.TextureSets.Select(static set => set.Kind).Distinct().Order().ToArray();
-            return sets.Length == 0 ? "Texture sets: â€”" : $"Texture sets: {string.Join(", ", sets)}";
+            return sets.Length == 0 ? "Texture sets: —" : $"Texture sets: {string.Join(", ", sets)}";
         }
     }
     public string ContentMapsDisplay
@@ -109,7 +110,7 @@ public sealed class AssetCardViewModel : ObservableObject, IDisposable
         get
         {
             var maps = Asset.Content.TextureSets.SelectMany(static set => set.Components).Select(static component => component.MapType).Distinct().Order().ToArray();
-            return maps.Length == 0 ? "Maps: â€”" : $"Maps: {string.Join(", ", maps)}";
+            return maps.Length == 0 ? "Maps: —" : $"Maps: {string.Join(", ", maps)}";
         }
     }
     public string ContentStatusDisplay => $"Status: {Asset.Content.Completeness}";
@@ -126,8 +127,7 @@ public sealed class AssetCardViewModel : ObservableObject, IDisposable
 
     public async Task LoadThumbnailAsync()
     {
-        imageCancellation?.Cancel();
-        imageCancellation?.Dispose();
+        CancelAndDisposeImageCancellation();
         imageCancellation = new();
         var token = imageCancellation.Token;
         var loaded = await imageLoader.LoadAsync(Asset.ThumbnailPath, 360, token);
@@ -136,8 +136,7 @@ public sealed class AssetCardViewModel : ObservableObject, IDisposable
 
     public async Task BeginHoverAsync()
     {
-        hoverCancellation?.Cancel();
-        hoverCancellation?.Dispose();
+        CancelAndDisposeHoverCancellation();
         hoverCancellation = new();
         var token = hoverCancellation.Token;
         try
@@ -148,12 +147,68 @@ public sealed class AssetCardViewModel : ObservableObject, IDisposable
         catch (OperationCanceledException) { }
     }
 
-    public void EndHover() { hoverCancellation?.Cancel(); IsHoverOpen = false; }
-    public void CancelImageLoad() => imageCancellation?.Cancel();
+    public void EndHover()
+    {
+        if (hoverCancellation is { IsCancellationRequested: false } cancellation)
+        {
+            cancellation.Cancel();
+        }
+
+        IsHoverOpen = false;
+    }
+
+    public void CancelImageLoad()
+    {
+        if (imageCancellation is { IsCancellationRequested: false } cancellation)
+        {
+            cancellation.Cancel();
+        }
+    }
+
     public void Dispose()
     {
-        imageCancellation?.Cancel(); imageCancellation?.Dispose();
-        hoverCancellation?.Cancel(); hoverCancellation?.Dispose();
+        if (disposed)
+        {
+            return;
+        }
+
+        disposed = true;
+        CancelAndDisposeImageCancellation();
+        CancelAndDisposeHoverCancellation();
+    }
+
+    private void CancelAndDisposeImageCancellation()
+    {
+        var cancellation = imageCancellation;
+        imageCancellation = null;
+        if (cancellation is null)
+        {
+            return;
+        }
+
+        if (!cancellation.IsCancellationRequested)
+        {
+            cancellation.Cancel();
+        }
+
+        cancellation.Dispose();
+    }
+
+    private void CancelAndDisposeHoverCancellation()
+    {
+        var cancellation = hoverCancellation;
+        hoverCancellation = null;
+        if (cancellation is null)
+        {
+            return;
+        }
+
+        if (!cancellation.IsCancellationRequested)
+        {
+            cancellation.Cancel();
+        }
+
+        cancellation.Dispose();
     }
 
     private static string[] BuildBadges(AssetContentInventory content)
@@ -187,3 +242,4 @@ public sealed class AssetCardViewModel : ObservableObject, IDisposable
         }
     });
 }
+

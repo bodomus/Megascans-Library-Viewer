@@ -14,6 +14,10 @@ public sealed record AssetSortOption(AssetSortMode Mode, string Label);
 
 public sealed class MainViewModel : ObservableObject, IDisposable
 {
+    private const AssetInventoryFilter AllInventoryFilters = AssetInventoryFilter.HasFbx | AssetInventoryFilter.HasLods |
+        AssetInventoryFilter.HasBillboard | AssetInventoryFilter.HasAtlas | AssetInventoryFilter.Complete |
+        AssetInventoryFilter.Incomplete | AssetInventoryFilter.Ambiguous;
+
     private readonly IAssetIndex index;
     private readonly ILibraryScanService scanService;
     private readonly IImageLoader imageLoader;
@@ -24,6 +28,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly ILogger<DiagnosticsViewModel> diagnosticsLogger;
     private IReadOnlyList<AssetSummary> allAssets = [];
     private CancellationTokenSource? scanCancellation;
+    private bool disposed;
     private string searchText = string.Empty;
     private string? selectedFolderPath;
     private string statusText = "Starting ScanVault…";
@@ -77,6 +82,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ToggleHasLodsCommand = new AsyncRelayCommand(token => ToggleFilterAsync(AssetInventoryFilter.HasLods, token));
         ToggleHasBillboardCommand = new AsyncRelayCommand(token => ToggleFilterAsync(AssetInventoryFilter.HasBillboard, token));
         ToggleHasAtlasCommand = new AsyncRelayCommand(token => ToggleFilterAsync(AssetInventoryFilter.HasAtlas, token));
+        ToggleAllInventoryFiltersCommand = new AsyncRelayCommand(ToggleAllInventoryFiltersAsync);
         ToggleCompleteCommand = new AsyncRelayCommand(token => ToggleFilterAsync(AssetInventoryFilter.Complete, token));
         ToggleIncompleteCommand = new AsyncRelayCommand(token => ToggleFilterAsync(AssetInventoryFilter.Incomplete, token));
         ToggleAmbiguousCommand = new AsyncRelayCommand(token => ToggleFilterAsync(AssetInventoryFilter.Ambiguous, token));
@@ -112,6 +118,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public AsyncRelayCommand ToggleHasLodsCommand { get; }
     public AsyncRelayCommand ToggleHasBillboardCommand { get; }
     public AsyncRelayCommand ToggleHasAtlasCommand { get; }
+    public AsyncRelayCommand ToggleAllInventoryFiltersCommand { get; }
     public AsyncRelayCommand ToggleCompleteCommand { get; }
     public AsyncRelayCommand ToggleIncompleteCommand { get; }
     public AsyncRelayCommand ToggleAmbiguousCommand { get; }
@@ -127,6 +134,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(FilterHasLods));
                 OnPropertyChanged(nameof(FilterHasBillboard));
                 OnPropertyChanged(nameof(FilterHasAtlas));
+                OnPropertyChanged(nameof(FilterAll));
                 OnPropertyChanged(nameof(FilterComplete));
                 OnPropertyChanged(nameof(FilterIncomplete));
                 OnPropertyChanged(nameof(FilterAmbiguous));
@@ -137,6 +145,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public bool FilterHasLods => InventoryFilter.HasFlag(AssetInventoryFilter.HasLods);
     public bool FilterHasBillboard => InventoryFilter.HasFlag(AssetInventoryFilter.HasBillboard);
     public bool FilterHasAtlas => InventoryFilter.HasFlag(AssetInventoryFilter.HasAtlas);
+    public bool FilterAll => (InventoryFilter & AllInventoryFilters) == AllInventoryFilters;
     public bool FilterComplete => InventoryFilter.HasFlag(AssetInventoryFilter.Complete);
     public bool FilterIncomplete => InventoryFilter.HasFlag(AssetInventoryFilter.Incomplete);
     public bool FilterAmbiguous => InventoryFilter.HasFlag(AssetInventoryFilter.Ambiguous);
@@ -265,6 +274,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public void SelectFolder(FolderNode? folder) =>
         SelectedFolderPath = folder?.FullPath;
 
+    public Task ToggleAllInventoryFiltersAsync(CancellationToken cancellationToken = default) =>
+        SetInventoryFilterAsync(FilterAll ? AssetInventoryFilter.None : AllInventoryFilters, cancellationToken);
+
     public async Task ChangeSortAsync(
         AssetSortMode value,
         CancellationToken cancellationToken = default)
@@ -306,7 +318,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        scanCancellation?.Dispose();
+        CancelAndDisposeScanCancellation();
         scanCancellation = CancellationTokenSource.CreateLinkedTokenSource(commandCancellation);
         var cancellationToken = scanCancellation.Token;
         IsScanning = true;
@@ -383,6 +395,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             updated &= ~(AssetInventoryFilter.Complete | AssetInventoryFilter.Incomplete | AssetInventoryFilter.Ambiguous);
             updated |= flag;
         }
+        await SetInventoryFilterAsync(updated, cancellationToken);
+    }
+
+    private async Task SetInventoryFilterAsync(AssetInventoryFilter updated, CancellationToken cancellationToken)
+    {
         try
         {
             await Settings.SaveInventoryFilterAsync(updated, cancellationToken);
@@ -403,7 +420,30 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void RequestContentInventory(AssetSummary asset) =>
         ContentInventoryRequested?.Invoke(new ContentInventoryViewModel(asset, interactions, logger));
-    private void CancelScan() => scanCancellation?.Cancel();
+    private void CancelScan()
+    {
+        if (scanCancellation is { IsCancellationRequested: false } cancellation)
+        {
+            cancellation.Cancel();
+        }
+    }
+
+    private void CancelAndDisposeScanCancellation()
+    {
+        var cancellation = scanCancellation;
+        scanCancellation = null;
+        if (cancellation is null)
+        {
+            return;
+        }
+
+        if (!cancellation.IsCancellationRequested)
+        {
+            cancellation.Cancel();
+        }
+
+        cancellation.Dispose();
+    }
 
     private void RebuildNavigation()
     {
@@ -509,10 +549,15 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        if (disposed)
+        {
+            return;
+        }
+
+        disposed = true;
         Settings.PropertyChanged -= OnSettingsPropertyChanged;
         Preview.PropertyChanged -= OnPreviewPropertyChanged;
-        scanCancellation?.Cancel();
-        scanCancellation?.Dispose();
+        CancelAndDisposeScanCancellation();
         foreach (var card in Assets)
         {
             card.Dispose();
@@ -521,3 +566,4 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Preview.Dispose();
     }
 }
+

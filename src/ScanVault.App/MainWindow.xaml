@@ -1,4 +1,4 @@
-﻿<Window x:Class="ScanVault.App.MainWindow"
+<Window x:Class="ScanVault.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="clr-namespace:ScanVault.App.Controls"
@@ -22,26 +22,33 @@
                 BorderBrush="#343B46" BorderThickness="0,0,0,1" Padding="12,8">
             <Grid>
                 <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-                <DockPanel Grid.Row="0" LastChildFill="True">
-                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+                <Grid Grid.Row="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="190" />
+                        <ColumnDefinition Width="360" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Orientation="Horizontal">
                         <Button Content="Settings" Click="OnSettingsClick" Padding="14,6" Margin="0,0,8,0" />
                         <Button Content="About / Diagnostics" Click="OnDiagnosticsClick" Padding="14,6" Margin="0,0,8,0" />
                         <Button Content="Rescan" Command="{Binding RescanCommand}" Padding="14,6" Margin="0,0,8,0" />
                         <Button Content="Cancel" Command="{Binding CancelScanCommand}" Padding="14,6" Margin="0,0,14,0" />
                     </StackPanel>
-                    <TextBlock DockPanel.Dock="Right" Text="{Binding StatusText}" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="360" Margin="12,0,0,0" />
-                    <ComboBox DockPanel.Dock="Right" Width="190" Margin="8,0,0,0" ItemsSource="{Binding SortOptions}" DisplayMemberPath="Label" SelectedValuePath="Mode" SelectedValue="{Binding SortMode, Mode=OneWay}" SelectionChanged="OnSortSelectionChanged" ToolTip="Sort visible assets" />
-                    <TextBox x:Name="SearchBox" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" ToolTip="Filter metadata and content inventory" VerticalContentAlignment="Center" Padding="10,5" MinWidth="220" MaxWidth="420" />
-                </DockPanel>
+                    <TextBox Grid.Column="1" x:Name="SearchBox" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" ToolTip="Filter metadata and content inventory" VerticalContentAlignment="Center" Padding="10,5" MinWidth="220" Margin="0,0,60,0" />
+                    <ComboBox Grid.Column="2" Margin="0,0,12,0" ItemsSource="{Binding SortOptions}" DisplayMemberPath="Label" SelectedValuePath="Mode" SelectedValue="{Binding SortMode, Mode=OneWay}" SelectionChanged="OnSortSelectionChanged" ToolTip="Sort visible assets" />
+                    <TextBlock Grid.Column="3" Text="{Binding StatusText}" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" TextAlignment="Right" TextTrimming="CharacterEllipsis" />
+                </Grid>
                 <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,5,0,0">
                     <TextBlock Text="CONTENT:" Foreground="{StaticResource TextSecondary}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                    <CheckBox Content="Has FBX" IsChecked="{Binding FilterHasFbx, Mode=OneWay}" Command="{Binding ToggleHasFbxCommand}" Margin="0,0,12,0"/>
-                    <CheckBox Content="Has LODs" IsChecked="{Binding FilterHasLods, Mode=OneWay}" Command="{Binding ToggleHasLodsCommand}" Margin="0,0,12,0"/>
-                    <CheckBox Content="Billboard" IsChecked="{Binding FilterHasBillboard, Mode=OneWay}" Command="{Binding ToggleHasBillboardCommand}" Margin="0,0,12,0"/>
-                    <CheckBox Content="Atlas" IsChecked="{Binding FilterHasAtlas, Mode=OneWay}" Command="{Binding ToggleHasAtlasCommand}" Margin="0,0,12,0"/>
-                    <CheckBox Content="Complete" IsChecked="{Binding FilterComplete, Mode=OneWay}" Command="{Binding ToggleCompleteCommand}" Margin="0,0,12,0"/>
-                    <CheckBox Content="Incomplete" IsChecked="{Binding FilterIncomplete, Mode=OneWay}" Command="{Binding ToggleIncompleteCommand}" Margin="0,0,12,0"/>
-                    <CheckBox Content="Ambiguous" IsChecked="{Binding FilterAmbiguous, Mode=OneWay}" Command="{Binding ToggleAmbiguousCommand}"/>
+                    <CheckBox Content="CHECK ALL" IsChecked="{Binding FilterAll, Mode=OneWay}" Command="{Binding ToggleAllInventoryFiltersCommand}" Margin="0,0,12,0" Foreground="{StaticResource TextCheckBox}"/>
+                    <CheckBox Content="Has FBX" IsChecked="{Binding FilterHasFbx, Mode=OneWay}" Command="{Binding ToggleHasFbxCommand}" Margin="0,0,12,0" Foreground="{StaticResource TextCheckBox}"/>
+                    <CheckBox Content="Has LODs" IsChecked="{Binding FilterHasLods, Mode=OneWay}" Command="{Binding ToggleHasLodsCommand}" Margin="0,0,12,0" Foreground="{StaticResource TextCheckBox}"/>
+                    <CheckBox Content="Billboard" IsChecked="{Binding FilterHasBillboard, Mode=OneWay}" Command="{Binding ToggleHasBillboardCommand}" Margin="0,0,12,0" Foreground="{StaticResource TextCheckBox}"/>
+                    <CheckBox Content="Atlas" IsChecked="{Binding FilterHasAtlas, Mode=OneWay}" Command="{Binding ToggleHasAtlasCommand}" Margin="0,0,12,0" Foreground="{StaticResource TextCheckBox}"/>
+                    <CheckBox Content="Complete" IsChecked="{Binding FilterComplete, Mode=OneWay}" Command="{Binding ToggleCompleteCommand}" Margin="0,0,12,0" Foreground="{StaticResource TextCheckBox}"/>
+                    <CheckBox Content="Incomplete" IsChecked="{Binding FilterIncomplete, Mode=OneWay}" Command="{Binding ToggleIncompleteCommand}" Margin="0,0,12,0" Foreground="{StaticResource TextCheckBox}"/>
+                    <CheckBox Content="Ambiguous" IsChecked="{Binding FilterAmbiguous, Mode=OneWay}" Command="{Binding ToggleAmbiguousCommand}" Foreground="{StaticResource TextCheckBox}" />
                 </StackPanel>
             </Grid>
         </Border>
@@ -305,3 +312,4 @@
         </Grid>
     </Grid>
 </Window>
+

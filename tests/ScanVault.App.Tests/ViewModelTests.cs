@@ -80,6 +80,31 @@ public sealed class ViewModelTests : IDisposable
         Assert.Equal(nature, interactions.CopiedText);
     }
 
+    [Fact]
+    public async Task CheckAllInventoryFilterTogglesEveryContentFilter()
+    {
+        var settingsStore = new MemorySettingsStore(new(root));
+        using var viewModel = CreateMainViewModel([], settingsStore, new RecordingInteractions());
+
+        await viewModel.InitializeAsync(CancellationToken.None);
+        await viewModel.ToggleAllInventoryFiltersAsync(CancellationToken.None);
+
+        Assert.True(viewModel.FilterAll);
+        Assert.True(viewModel.FilterHasFbx);
+        Assert.True(viewModel.FilterHasLods);
+        Assert.True(viewModel.FilterHasBillboard);
+        Assert.True(viewModel.FilterHasAtlas);
+        Assert.True(viewModel.FilterComplete);
+        Assert.True(viewModel.FilterIncomplete);
+        Assert.True(viewModel.FilterAmbiguous);
+        Assert.Equal(settingsStore.Value.InventoryFilter, viewModel.InventoryFilter);
+
+        await viewModel.ToggleAllInventoryFiltersAsync(CancellationToken.None);
+
+        Assert.False(viewModel.FilterAll);
+        Assert.Equal(AssetInventoryFilter.None, viewModel.InventoryFilter);
+        Assert.Equal(AssetInventoryFilter.None, settingsStore.Value.InventoryFilter);
+    }
     [Theory]
     [InlineData(IndexCompatibilityState.Missing, true, "No index exists")]
     [InlineData(IndexCompatibilityState.NewerVersionUnsupported, false, "newer ScanVault version")]
@@ -141,6 +166,49 @@ public sealed class ViewModelTests : IDisposable
         preview.Close();
         Assert.False(preview.IsOpen);
         Assert.Null(preview.Asset);
+    }
+
+
+    [Fact]
+    public async Task ViewModelDisposeCanRunMoreThanOnce()
+    {
+        var settingsStore = new MemorySettingsStore(new(root));
+        var viewModel = CreateMainViewModel([], settingsStore, new RecordingInteractions());
+
+        await viewModel.InitializeAsync(CancellationToken.None);
+
+        viewModel.Dispose();
+        viewModel.Dispose();
+    }
+
+    [Fact]
+    public async Task PreviewDisposeCanRunMoreThanOnceAfterLoading()
+    {
+        var preview = new PreviewViewModel(new NullImageLoader());
+        var asset = CreateAsset("preview-dispose", "Preview Dispose", root, "test");
+
+        await preview.OpenAsync(asset);
+
+        preview.Dispose();
+        preview.Dispose();
+    }
+
+    [Fact]
+    public async Task AssetCardDisposeCanRunMoreThanOnceAfterThumbnailLoad()
+    {
+        var asset = CreateAsset("card-dispose", "Card Dispose", root, "test");
+        var card = new AssetCardViewModel(
+            asset,
+            new NullImageLoader(),
+            new RecordingInteractions(),
+            static _ => Task.CompletedTask,
+            static _ => { },
+            NullLogger<AssetCardViewModel>.Instance);
+
+        await card.LoadThumbnailAsync();
+
+        card.Dispose();
+        card.Dispose();
     }
 
     public void Dispose() => Directory.Delete(root, recursive: true);
@@ -286,3 +354,5 @@ public sealed class ViewModelTests : IDisposable
         public void OpenFolder(string folderPath) { }
     }
 }
+
+

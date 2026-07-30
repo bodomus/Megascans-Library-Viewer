@@ -8,6 +8,7 @@ namespace ScanVault.App.ViewModels;
 public sealed class PreviewViewModel(IImageLoader imageLoader) : ObservableObject, IDisposable
 {
     private CancellationTokenSource? loadCancellation;
+    private bool disposed;
     private AssetSummary? asset;
     private ImageSource? image;
     private bool isOpen;
@@ -32,8 +33,7 @@ public sealed class PreviewViewModel(IImageLoader imageLoader) : ObservableObjec
 
     public async Task OpenAsync(AssetSummary selectedAsset)
     {
-        loadCancellation?.Cancel();
-        loadCancellation?.Dispose();
+        CancelAndDisposeLoadCancellation();
         loadCancellation = new();
         Asset = selectedAsset;
         Image = null;
@@ -51,14 +51,43 @@ public sealed class PreviewViewModel(IImageLoader imageLoader) : ObservableObjec
 
     public void Dispose()
     {
+        if (disposed)
+        {
+            return;
+        }
+
+        disposed = true;
         Close();
-        loadCancellation?.Dispose();
+        CancelAndDisposeLoadCancellation();
     }
+
     public void Close()
     {
-        loadCancellation?.Cancel();
+        if (loadCancellation is { IsCancellationRequested: false } cancellation)
+        {
+            cancellation.Cancel();
+        }
+
         Image = null;
         Asset = null;
         IsOpen = false;
     }
+
+    private void CancelAndDisposeLoadCancellation()
+    {
+        var cancellation = loadCancellation;
+        loadCancellation = null;
+        if (cancellation is null)
+        {
+            return;
+        }
+
+        if (!cancellation.IsCancellationRequested)
+        {
+            cancellation.Cancel();
+        }
+
+        cancellation.Dispose();
+    }
 }
+
