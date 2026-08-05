@@ -112,6 +112,33 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void OnExportReportClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel viewModel)
+        {
+            return;
+        }
+
+        try
+        {
+            var export = await viewModel.CreateExportReportViewModelAsync(CancellationToken.None);
+            var window = new ExportReportWindow
+            {
+                Owner = this,
+                DataContext = export
+            };
+            window.ShowDialog();
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(
+                $"Export Report could not be opened.{Environment.NewLine}{exception.Message}",
+                "ScanVault report export",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+    }
+
     private async void OnDiagnosticsClick(object sender, RoutedEventArgs e)
     {
         if (DataContext is not MainViewModel viewModel)

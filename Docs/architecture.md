@@ -91,3 +91,11 @@ The Windows GitHub Actions workflow validates restore, Release build, tests, for
 `Scan History` opens from the main toolbar. The window lists recent scan runs newest first with status, duration, totals, application version, and error text for failed/cancelled runs. Selecting a completed run loads change details by category: `Added`, `Changed`, `Removed`, or `Unchanged`. Detail rows show name, asset ID, type, previous/current relative paths, change reason, and completeness. Existing assets can be opened from the history view; removed assets cannot.
 
 After Rescan the main status line shows Added/Changed/Removed/Unchanged counts and marks the first successful run for a library as `Initial baseline`.
+
+## Report export
+
+Report export preserves the project dependency direction. Core owns versioned report DTOs, profiles, request/progress contracts, and deterministic mapping from indexed AssetSummary, smart-collection, and scan-history models. Infrastructure implements format-specific CSV, JSON, and Markdown writers plus staging/finalization. The writers have no WPF dependency. App owns the Export Report window, current-view snapshot, Save dialog, overwrite confirmation, progress, cancellation, and structured lifecycle logging.
+
+Current View snapshots the existing MainViewModel card order after the shared folder/search/inventory/smart-collection/sort pipeline; export does not duplicate query semantics. Entire Library snapshots the current SQLite read model already loaded by the application. Scan Changes reads only completed persisted runs, and Smart Collection Result evaluates the existing versioned definition.
+
+Every format streams rows to a unique sibling temporary file. Cancellation and failures clean staging files; the final destination is published only after a complete flush. CSV uses a separately staged metadata companion. Default paths remain relative, and neither previews nor binary asset contents are opened.

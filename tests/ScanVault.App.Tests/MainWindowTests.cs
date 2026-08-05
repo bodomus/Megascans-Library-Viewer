@@ -49,6 +49,7 @@ public sealed class MainWindowTests
                 Assert.NotNull(listBox.ItemContainerGenerator.ContainerFromIndex(0));
                 Assert.Equal("ScanVault Test 9.8.7", window.Title);
 
+                Assert.NotNull(FindVisualChildByName<Button>(window, "ExportReportButton"));
                 diagnosticsWindow = new()
                 {
                     DataContext = new DiagnosticsViewModel(
