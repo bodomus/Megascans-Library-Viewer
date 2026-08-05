@@ -28,6 +28,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly ILogger<AssetCardViewModel> cardLogger;
     private readonly ILogger<DiagnosticsViewModel> diagnosticsLogger;
     private readonly ILogger<ScanHistoryViewModel> scanHistoryLogger;
+    private readonly ILogger<ExportReportViewModel> exportReportLogger;
+    private readonly IReportExportService reportExportService;
+    private readonly ApplicationBuildInfo buildInfo;
     private IReadOnlyList<AssetSummary> allAssets = [];
     private CancellationTokenSource? scanCancellation;
     private CancellationTokenSource? smartCollectionCountsCancellation;
@@ -53,6 +56,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ILibraryScanService scanService,
         ISettingsStore settingsStore,
         ISmartCollectionStore smartCollectionStore,
+        IReportExportService reportExportService,
         IImageLoader imageLoader,
         IAssetInteractionService interactions,
         ApplicationBuildInfo buildInfo,
@@ -66,11 +70,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         this.interactions = interactions;
         this.diagnosticsService = diagnosticsService;
         this.smartCollectionStore = smartCollectionStore;
+        this.reportExportService = reportExportService;
+        this.buildInfo = buildInfo;
         this.logger = logger;
         cardLogger = loggerFactory.CreateLogger<AssetCardViewModel>();
         diagnosticsLogger = loggerFactory.CreateLogger<DiagnosticsViewModel>();
         scanHistoryLogger = loggerFactory.CreateLogger<ScanHistoryViewModel>();
         Settings = new(settingsStore);
+        exportReportLogger = loggerFactory.CreateLogger<ExportReportViewModel>();
         WindowTitle = buildInfo.WindowTitle;
         ProductVersion = buildInfo.ProductVersion;
         Preview = new(imageLoader);
@@ -900,6 +907,28 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         return viewModel;
     }
 
+
+    public async Task<ExportReportViewModel> CreateExportReportViewModelAsync(CancellationToken cancellationToken)
+    {
+        var collections = BuiltInSmartCollections
+            .Concat(UserSmartCollections)
+            .Select(static item => item.Record)
+            .ToArray();
+        var viewModel = new ExportReportViewModel(
+            reportExportService,
+            index,
+            allAssets.ToArray(),
+            Assets.Select(static card => card.Asset).ToArray(),
+            SelectedCard?.Asset,
+            collections,
+            Settings.LibraryRoot,
+            DescribeCurrentCriteria(),
+            SortMode.ToString(),
+            buildInfo,
+            exportReportLogger);
+        await viewModel.LoadAsync(cancellationToken);
+        return viewModel;
+    }
     public async Task<DiagnosticsViewModel> CreateDiagnosticsViewModelAsync(
         CancellationToken cancellationToken)
     {

@@ -20,6 +20,7 @@ ScanVault is a Windows desktop viewer and local indexer for legacy Quixel Megasc
 - existing-index load at startup with no automatic rescan;
 - compact About / Diagnostics report with stable clipboard output;
 - persisted scan history with Added/Changed/Removed/Unchanged change detection and a read-only Scan History window;
+- cancellable read-only CSV, JSON, and Markdown report export for catalog, inventory, issues, completeness, scan changes, and smart-collection results;
 - explicit read-before-write index compatibility states that preserve newer or corrupted databases.
 
 ## Prerequisites
@@ -53,7 +54,7 @@ These paths are outside both the repository and the scanned library. Smart colle
 
 ## Architecture
 
-`ScanVault.Core` owns models, contracts, and deterministic normalization/catalog policies. `ScanVault.Infrastructure` owns filesystem discovery, schema-aware JSON parsing, settings, scan orchestration, and SQLite. `ScanVault.App` owns WPF composition, views, view models, commands, virtualization, image presentation, clipboard, and Explorer interaction. See `Docs/architecture.md`, `Docs/index-format.md`, `Docs/content-inventory.md`, `Docs/diagnostics.md`, and `Docs/versioning-and-ci.md`.
+`ScanVault.Core` owns models, contracts, and deterministic normalization/catalog policies. `ScanVault.Infrastructure` owns filesystem discovery, schema-aware JSON parsing, settings, scan orchestration, SQLite, and report writers. `ScanVault.App` owns WPF composition, views, view models, commands, virtualization, image presentation, clipboard, Explorer interaction, and export workflow state. See `Docs/architecture.md`, `Docs/index-format.md`, `Docs/content-inventory.md`, `Docs/diagnostics.md`, `Docs/export-reports.md`, and `Docs/versioning-and-ci.md`.
 
 ## Version and CI
 
@@ -68,6 +69,7 @@ Non-trivial tickets follow `.codex/PRE_TICKET_WORKFLOW.md`: Graphify for archite
 - Windows-only WPF application;
 - no Unreal/Fab integration, import, editing, moving, or deleting assets;
 - no virtual grouping trees, mesh/material renderer, zoom/pan, installer, or updater;
+- report export does not include XLSX, PDF, HTML, custom templates, scheduling, CLI, or binary asset contents;
 - scan history detects logical metadata/content/file-property changes, not binary file-content diffs;
 - metadata support is intentionally tolerant and may omit unknown legacy fields;
 - advanced query syntax and multi-selection are not supported.

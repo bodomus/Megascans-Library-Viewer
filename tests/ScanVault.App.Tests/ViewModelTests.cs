@@ -237,6 +237,7 @@ public sealed class ViewModelTests : IDisposable
             new NoOpScanService(),
             settingsStore,
             new MemorySmartCollectionStore(),
+            new NoOpReportExportService(),
             new NullImageLoader(),
             interactions,
             buildInfo,
@@ -362,6 +363,14 @@ public sealed class ViewModelTests : IDisposable
             IProgress<ScanProgress>? progress,
             CancellationToken cancellationToken) =>
             Task.FromResult(new ScanResult(0, 0, 0, 0, 0, 0, [], [], [], TimeSpan.Zero));
+    }
+
+
+    private sealed class NoOpReportExportService : IReportExportService
+    {
+        public Task<ReportExportResult> ExportAsync(ReportExportRequest request, IProgress<ReportProgress>? progress,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(new ReportExportResult(request.DestinationPath, null, request.Assets.Count, 0, 0, TimeSpan.Zero));
     }
 
     private sealed class NullImageLoader : IImageLoader
