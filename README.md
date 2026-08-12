@@ -16,7 +16,8 @@ ScanVault is a Windows desktop viewer and local indexer for legacy Quixel Megasc
 - case-insensitive metadata/content search, seven persistent inventory filters, twelve deterministic sort modes, and saved smart collections;
 - virtualized thumbnail grid with asynchronous bounded image cache;
 - persistent single-card selection, delayed normalized hover details, and context actions;
-- keyboard navigation with `Enter` preview, `Esc` close, and list-scoped `Ctrl+C` folder copy;
+- explicit two-slot Asset Comparison tray and a virtualized five-tab comparison window for metadata, variants/LODs, texture sets, logical files, and stable issue codes;
+- keyboard navigation with `Enter` preview, `Esc` close, list-scoped `Ctrl+C` folder copy, and `Ctrl+Shift+C` comparison selection/open;
 - existing-index load at startup with no automatic rescan;
 - compact About / Diagnostics report with stable clipboard output;
 - persisted scan history with Added/Changed/Removed/Unchanged change detection and a read-only Scan History window;
@@ -54,7 +55,7 @@ These paths are outside both the repository and the scanned library. Smart colle
 
 ## Architecture
 
-`ScanVault.Core` owns models, contracts, and deterministic normalization/catalog policies. `ScanVault.Infrastructure` owns filesystem discovery, schema-aware JSON parsing, settings, scan orchestration, SQLite, and report writers. `ScanVault.App` owns WPF composition, views, view models, commands, virtualization, image presentation, clipboard, Explorer interaction, and export workflow state. See `Docs/architecture.md`, `Docs/index-format.md`, `Docs/content-inventory.md`, `Docs/diagnostics.md`, `Docs/export-reports.md`, and `Docs/versioning-and-ci.md`.
+`ScanVault.Core` owns models, contracts, and deterministic normalization/catalog policies. `ScanVault.Infrastructure` owns filesystem discovery, schema-aware JSON parsing, settings, scan orchestration, SQLite, and report writers. `ScanVault.App` owns WPF composition, views, view models, commands, virtualization, image presentation, clipboard, Explorer interaction, and export workflow state. See `Docs/architecture.md`, `Docs/index-format.md`, `Docs/content-inventory.md`, `Docs/asset-comparison.md`, `Docs/diagnostics.md`, `Docs/export-reports.md`, and `Docs/versioning-and-ci.md`.
 
 ## Version and CI
 
@@ -72,4 +73,4 @@ Non-trivial tickets follow `.codex/PRE_TICKET_WORKFLOW.md`: Graphify for archite
 - report export does not include XLSX, PDF, HTML, custom templates, scheduling, CLI, or binary asset contents;
 - scan history detects logical metadata/content/file-property changes, not binary file-content diffs;
 - metadata support is intentionally tolerant and may omit unknown legacy fields;
-- advanced query syntax and multi-selection are not supported.
+- advanced query syntax and general multi-selection are not supported; Asset Comparison instead uses an explicit two-slot tray.

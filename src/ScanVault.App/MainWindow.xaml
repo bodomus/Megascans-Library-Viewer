@@ -9,11 +9,12 @@
         Foreground="{StaticResource TextPrimary}">
     <Window.InputBindings>
         <KeyBinding Key="Escape" Command="{Binding ClosePreviewCommand}" />
+        <KeyBinding Key="C" Modifiers="Control+Shift" Command="{Binding OpenComparisonCommand}" />
     </Window.InputBindings>
 
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="84" />
+            <RowDefinition Height="124" />
             <RowDefinition Height="*" />
             <RowDefinition Height="30" />
         </Grid.RowDefinitions>
@@ -21,7 +22,7 @@
         <Border Grid.Row="0" Background="{StaticResource PanelBackground}"
                 BorderBrush="#343B46" BorderThickness="0,0,0,1" Padding="12,8">
             <Grid>
-                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                 <Grid Grid.Row="0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
@@ -52,6 +53,22 @@
                     <CheckBox Content="Incomplete" IsChecked="{Binding FilterIncomplete, Mode=OneWay}" Command="{Binding ToggleIncompleteCommand}" Margin="0,0,12,0" Foreground="{StaticResource TextCheckBox}"/>
                     <CheckBox Content="Ambiguous" IsChecked="{Binding FilterAmbiguous, Mode=OneWay}" Command="{Binding ToggleAmbiguousCommand}" Foreground="{StaticResource TextCheckBox}" />
                 </StackPanel>
+                <Border Grid.Row="2" Margin="0,6,0,0" Padding="7,4" Background="#292E37" CornerRadius="4">
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="COMPARE:" Foreground="{StaticResource Accent}" FontWeight="SemiBold" Margin="0,0,8,0" />
+                            <TextBlock Text="{Binding ComparisonLeftName}" Foreground="{StaticResource TextPrimary}" Width="220" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="&lt;-&gt;" Foreground="{StaticResource TextSecondary}" Margin="6,0" />
+                            <TextBlock Text="{Binding ComparisonRightName}" Foreground="{StaticResource TextPrimary}" Width="220" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{Binding ComparisonStateText, StringFormat=-- {0}}" Foreground="{StaticResource TextSecondary}" Margin="8,0,0,0" />
+                        </StackPanel>
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <Button Content="Add selected" Command="{Binding AddSelectedToComparisonCommand}" Padding="10,3" Margin="0,0,6,0" />
+                            <Button x:Name="CompareAssetsButton" Content="Compare assets" Command="{Binding OpenComparisonCommand}" Padding="10,3" Margin="0,0,6,0" ToolTip="Ctrl+Shift+C" />
+                            <Button Content="Clear" Command="{Binding ClearComparisonCommand}" Padding="10,3" />
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
             </Grid>
         </Border>
 
@@ -214,6 +231,10 @@
                                         <DataTrigger Binding="{Binding IsKeyboardFocusWithin, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
                                             <Setter Property="BorderBrush" Value="#D7E9FF" />
                                         </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsInComparison}" Value="True">
+                                            <Setter Property="BorderBrush" Value="#65C98D" />
+                                            <Setter Property="BorderThickness" Value="3" />
+                                        </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </Border.Style>
@@ -222,6 +243,7 @@
                                     <MenuItem Header="Open preview" Command="{Binding OpenPreviewCommand}" />
                                     <MenuItem Header="Open folder" Command="{Binding OpenFolderCommand}" />
                                     <MenuItem Header="Show content inventory" Command="{Binding ShowContentInventoryCommand}" />
+                                    <MenuItem Header="Add to comparison" Command="{Binding AddToComparisonCommand}" />
                                     <Separator />
                                     <MenuItem Header="Copy asset ID" Command="{Binding CopyAssetIdCommand}" />
                                     <MenuItem Header="Copy folder path" Command="{Binding CopyFolderPathCommand}" />

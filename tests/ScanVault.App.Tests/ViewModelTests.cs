@@ -211,6 +211,44 @@ public sealed class ViewModelTests : IDisposable
         card.Dispose();
     }
 
+    [Fact]
+    public async Task ComparisonTrayPreservesSingleSelectionAndUsesFifoForThirdAsset()
+    {
+        var assets = new[]
+        {
+            CreateAsset("one", "One", root, "one"),
+            CreateAsset("two", "Two", root, "two"),
+            CreateAsset("three", "Three", root, "three")
+        };
+        using var viewModel = CreateMainViewModel(
+            assets,
+            new MemorySettingsStore(new(root)),
+            new RecordingInteractions());
+        await viewModel.InitializeAsync(CancellationToken.None);
+
+        viewModel.SelectedCard = viewModel.Assets.Single(card => card.Asset.Id == "one");
+        viewModel.AddSelectedToComparisonCommand.Execute(null);
+        Assert.Equal("One", viewModel.ComparisonLeftName);
+        Assert.False(viewModel.CanOpenComparison);
+
+        viewModel.SelectedCard = viewModel.Assets.Single(card => card.Asset.Id == "two");
+        viewModel.AddSelectedToComparisonCommand.Execute(null);
+        Assert.True(viewModel.CanOpenComparison);
+        Assert.Equal("Ready to compare", viewModel.ComparisonStateText);
+        Assert.Equal("two", viewModel.SelectedCard.Asset.Id);
+
+        viewModel.SelectedCard = viewModel.Assets.Single(card => card.Asset.Id == "three");
+        viewModel.AddSelectedToComparisonCommand.Execute(null);
+        Assert.Equal("Two", viewModel.ComparisonLeftName);
+        Assert.Equal("Three", viewModel.ComparisonRightName);
+        Assert.Equal(2, viewModel.ComparisonCount);
+
+        AssetComparisonViewModel? requested = null;
+        viewModel.AssetComparisonRequested += comparison => requested = comparison;
+        viewModel.OpenComparisonCommand.Execute(null);
+        Assert.NotNull(requested);
+        requested.Dispose();
+    }
     public void Dispose() => Directory.Delete(root, recursive: true);
 
     private static MainViewModel CreateMainViewModel(

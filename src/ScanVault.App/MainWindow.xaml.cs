@@ -283,6 +283,18 @@ public partial class MainWindow : Window
             e.Handled = true;
         }
         else if (e.Key == Key.C &&
+                 Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
+        {
+            var command = viewModel.OpenComparisonCommand.CanExecute(null)
+                ? viewModel.OpenComparisonCommand
+                : viewModel.AddSelectedToComparisonCommand;
+            if (command.CanExecute(null))
+            {
+                command.Execute(null);
+                e.Handled = true;
+            }
+        }
+        else if (e.Key == Key.C &&
                  Keyboard.Modifiers == ModifierKeys.Control &&
                  viewModel.CopySelectedFolderCommand.CanExecute(null))
         {
@@ -305,6 +317,7 @@ public partial class MainWindow : Window
         if (subscribedViewModel is not null)
         {
             subscribedViewModel.Preview.PropertyChanged -= OnPreviewPropertyChanged;
+            subscribedViewModel.AssetComparisonRequested -= OnAssetComparisonRequested;
             subscribedViewModel.ContentInventoryRequested -= OnContentInventoryRequested;
         }
 
@@ -312,6 +325,7 @@ public partial class MainWindow : Window
         if (subscribedViewModel is not null)
         {
             subscribedViewModel.Preview.PropertyChanged += OnPreviewPropertyChanged;
+            subscribedViewModel.AssetComparisonRequested += OnAssetComparisonRequested;
             subscribedViewModel.ContentInventoryRequested += OnContentInventoryRequested;
         }
     }
@@ -324,6 +338,15 @@ public partial class MainWindow : Window
             DataContext = viewModel
         };
         window.ShowDialog();
+    }
+    private void OnAssetComparisonRequested(AssetComparisonViewModel viewModel)
+    {
+        var window = new AssetComparisonWindow
+        {
+            Owner = this,
+            DataContext = viewModel
+        };
+        window.Show();
     }
     private void OnPreviewPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -352,6 +375,7 @@ public partial class MainWindow : Window
         if (subscribedViewModel is not null)
         {
             subscribedViewModel.Preview.PropertyChanged -= OnPreviewPropertyChanged;
+            subscribedViewModel.AssetComparisonRequested -= OnAssetComparisonRequested;
             subscribedViewModel.ContentInventoryRequested -= OnContentInventoryRequested;
         }
     }

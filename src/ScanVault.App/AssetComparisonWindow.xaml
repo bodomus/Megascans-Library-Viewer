@@ -1,0 +1,145 @@
+<Window x:Class="ScanVault.App.AssetComparisonWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:models="clr-namespace:ScanVault.Core.Models;assembly=ScanVault.Core"
+        Title="Asset Comparison" Width="1180" Height="780" MinWidth="900" MinHeight="620"
+        Background="{StaticResource WindowBackground}" Foreground="{StaticResource TextPrimary}"
+        Loaded="OnLoaded" Closed="OnClosed" PreviewKeyDown="OnPreviewKeyDown">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="VisibleWhenTrue" />
+        <DataTemplate x:Key="ComparisonRowsTemplate">
+            <DataGrid ItemsSource="{Binding}" AutoGenerateColumns="False" IsReadOnly="True"
+                      CanUserAddRows="False" CanUserDeleteRows="False" CanUserReorderColumns="False"
+                      HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                      Background="#20242B" Foreground="{StaticResource TextPrimary}"
+                      RowBackground="#20242B" AlternatingRowBackground="#252A33"
+                      BorderBrush="#3B434F" HorizontalGridLinesBrush="#343B46"
+                      EnableRowVirtualization="True" EnableColumnVirtualization="True"
+                      VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                      ScrollViewer.CanContentScroll="True">
+                <DataGrid.RowStyle>
+                    <Style TargetType="DataGridRow">
+                        <Setter Property="ToolTip" Value="{Binding ResultLabel}" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding Result}" Value="{x:Static models:ComparisonResult.Different}">
+                                <Setter Property="BorderBrush" Value="#C79852" /><Setter Property="BorderThickness" Value="3,0,0,0" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Result}" Value="{x:Static models:ComparisonResult.OnlyLeft}">
+                                <Setter Property="BorderBrush" Value="#79A9D8" /><Setter Property="BorderThickness" Value="3,0,0,0" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Result}" Value="{x:Static models:ComparisonResult.OnlyRight}">
+                                <Setter Property="BorderBrush" Value="#9A83CC" /><Setter Property="BorderThickness" Value="3,0,0,0" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Result}" Value="{x:Static models:ComparisonResult.Unknown}">
+                                <Setter Property="BorderBrush" Value="#8E98A6" /><Setter Property="BorderThickness" Value="3,0,0,0" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Result}" Value="{x:Static models:ComparisonResult.Ambiguous}">
+                                <Setter Property="BorderBrush" Value="#CC8669" /><Setter Property="BorderThickness" Value="3,0,0,0" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </DataGrid.RowStyle>
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Comparison field" Binding="{Binding Label}" Width="1.2*" />
+                    <DataGridTextColumn Header="Left asset" Binding="{Binding Left.DisplayValue}" Width="2*" />
+                    <DataGridTextColumn Header="Right asset" Binding="{Binding Right.DisplayValue}" Width="2*" />
+                    <DataGridTextColumn Header="Result" Binding="{Binding ResultLabel}" Width="1*" />
+                </DataGrid.Columns>
+            </DataGrid>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="190" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="190" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Border Grid.Column="0" Background="{StaticResource CardBackground}" CornerRadius="7" Padding="10" Margin="0,0,8,8">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="170" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                    <Border Background="#15181D" CornerRadius="5" ClipToBounds="True">
+                        <Grid><TextBlock Text="No preview" Foreground="#66707D" HorizontalAlignment="Center" VerticalAlignment="Center"/><Image Source="{Binding LeftPreview}" Stretch="UniformToFill"/></Grid>
+                    </Border>
+                    <StackPanel Grid.Column="1" Margin="12,0,0,0">
+                        <TextBlock Text="LEFT ASSET" Foreground="{StaticResource Accent}" FontWeight="Bold" />
+                        <TextBlock Text="{Binding LeftHeader.Name}" FontSize="18" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding LeftHeader.Name}" />
+                        <TextBlock Text="{Binding LeftHeader.AssetId, StringFormat=ID: {0}}" Foreground="{StaticResource TextSecondary}" />
+                        <TextBlock Text="{Binding LeftHeader.AssetType}" Foreground="{StaticResource TextSecondary}" />
+                        <TextBlock Text="{Binding LeftHeader.RelativePath}" Foreground="{StaticResource TextSecondary}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding LeftHeader.Completeness, StringFormat=Status: {0}}" Margin="0,5,0,5" />
+                        <WrapPanel>
+                            <Button Content="Open asset" Command="{Binding OpenLeftAssetCommand}" Padding="8,3" Margin="0,0,5,5" />
+                            <Button Content="Open folder" Command="{Binding OpenLeftFolderCommand}" Padding="8,3" Margin="0,0,5,5" />
+                            <Button Content="Content inventory" Command="{Binding OpenLeftInventoryCommand}" Padding="8,3" Margin="0,0,5,5" />
+                        </WrapPanel>
+                        <TextBlock Text="{Binding LeftError}" Foreground="#FFB3A7" TextWrapping="Wrap" Visibility="{Binding HasLeftError, Converter={StaticResource VisibleWhenTrue}}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <StackPanel Grid.Column="1" HorizontalAlignment="Stretch" VerticalAlignment="Center" Margin="10">
+                <Button Content="⇄  Swap" Command="{Binding SwapCommand}" Padding="10,6" Margin="0,0,0,8" AutomationProperties.Name="Swap comparison sides" />
+                <Button Content="Replace left" Command="{Binding ReplaceLeftCommand}" Padding="10,6" Margin="0,0,0,8" />
+                <Button Content="Replace right" Command="{Binding ReplaceRightCommand}" Padding="10,6" Margin="0,0,0,8" />
+                <Button Content="Refresh" Command="{Binding RefreshCommand}" Padding="10,6" />
+            </StackPanel>
+
+            <Border Grid.Column="2" Background="{StaticResource CardBackground}" CornerRadius="7" Padding="10" Margin="8,0,0,8">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="170" /></Grid.ColumnDefinitions>
+                    <StackPanel Margin="0,0,12,0">
+                        <TextBlock Text="RIGHT ASSET" Foreground="{StaticResource Accent}" FontWeight="Bold" />
+                        <TextBlock Text="{Binding RightHeader.Name}" FontSize="18" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding RightHeader.Name}" />
+                        <TextBlock Text="{Binding RightHeader.AssetId, StringFormat=ID: {0}}" Foreground="{StaticResource TextSecondary}" />
+                        <TextBlock Text="{Binding RightHeader.AssetType}" Foreground="{StaticResource TextSecondary}" />
+                        <TextBlock Text="{Binding RightHeader.RelativePath}" Foreground="{StaticResource TextSecondary}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding RightHeader.Completeness, StringFormat=Status: {0}}" Margin="0,5,0,5" />
+                        <WrapPanel>
+                            <Button Content="Open asset" Command="{Binding OpenRightAssetCommand}" Padding="8,3" Margin="0,0,5,5" />
+                            <Button Content="Open folder" Command="{Binding OpenRightFolderCommand}" Padding="8,3" Margin="0,0,5,5" />
+                            <Button Content="Content inventory" Command="{Binding OpenRightInventoryCommand}" Padding="8,3" Margin="0,0,5,5" />
+                        </WrapPanel>
+                        <TextBlock Text="{Binding RightError}" Foreground="#FFB3A7" TextWrapping="Wrap" Visibility="{Binding HasRightError, Converter={StaticResource VisibleWhenTrue}}" />
+                    </StackPanel>
+                    <Border Grid.Column="1" Background="#15181D" CornerRadius="5" ClipToBounds="True">
+                        <Grid><TextBlock Text="No preview" Foreground="#66707D" HorizontalAlignment="Center" VerticalAlignment="Center"/><Image Source="{Binding RightPreview}" Stretch="UniformToFill"/></Grid>
+                    </Border>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <DockPanel Grid.Row="1" Margin="0,2,0,8">
+            <CheckBox x:Name="DifferencesOnlyCheckBox" DockPanel.Dock="Left" Content="Show differences only"
+                      IsChecked="{Binding ShowDifferencesOnly, Mode=TwoWay}" VerticalAlignment="Center"
+                      AutomationProperties.HelpText="Hides rows whose normalized values are equal" />
+            <TextBlock DockPanel.Dock="Right" Text="Snapshot is stale — use Refresh" Foreground="#F2C078" FontWeight="SemiBold"
+                       Visibility="{Binding IsStale, Converter={StaticResource VisibleWhenTrue}}" />
+        </DockPanel>
+
+        <TabControl Grid.Row="2" Background="{StaticResource PanelBackground}" Foreground="{StaticResource TextPrimary}">
+            <TabItem Header="Overview"><ContentControl Content="{Binding OverviewRows}" ContentTemplate="{StaticResource ComparisonRowsTemplate}" /></TabItem>
+            <TabItem Header="Variants and LODs"><ContentControl Content="{Binding VariantAndLodRows}" ContentTemplate="{StaticResource ComparisonRowsTemplate}" /></TabItem>
+            <TabItem Header="Texture Sets"><ContentControl Content="{Binding TextureRows}" ContentTemplate="{StaticResource ComparisonRowsTemplate}" /></TabItem>
+            <TabItem Header="Files"><ContentControl Content="{Binding FileRows}" ContentTemplate="{StaticResource ComparisonRowsTemplate}" /></TabItem>
+            <TabItem Header="Issues"><ContentControl Content="{Binding IssueRows}" ContentTemplate="{StaticResource ComparisonRowsTemplate}" /></TabItem>
+        </TabControl>
+
+        <DockPanel Grid.Row="3" Margin="0,8,0,0">
+            <TextBlock DockPanel.Dock="Left" Text="{Binding StatusText}" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" />
+            <TextBlock DockPanel.Dock="Right" Foreground="{StaticResource TextSecondary}">
+                <Run Text="Files: "/><Run Text="{Binding LeftFileCount, Mode=OneWay}"/><Run Text=" / "/><Run Text="{Binding RightFileCount, Mode=OneWay}"/>
+                <Run Text="   Load: "/><Run Text="{Binding LoadDurationMs, Mode=OneWay}"/><Run Text=" ms   Compare: "/><Run Text="{Binding ComparisonDurationMs, Mode=OneWay}"/><Run Text=" ms   Ready: "/><Run Text="{Binding TotalReadyDurationMs, Mode=OneWay}"/><Run Text=" ms"/>
+            </TextBlock>
+        </DockPanel>
+    </Grid>
+</Window>
+

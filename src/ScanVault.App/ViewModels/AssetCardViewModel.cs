@@ -17,6 +17,7 @@ public sealed class AssetCardViewModel : ObservableObject, IDisposable
     private bool disposed;
     private ImageSource? thumbnail;
     private bool isHoverOpen;
+    private bool isInComparison;
 
     public AssetCardViewModel(
         AssetSummary asset,
@@ -25,17 +26,21 @@ public sealed class AssetCardViewModel : ObservableObject, IDisposable
         Func<AssetSummary, Task> openPreview,
         Action<string> reportStatus,
         ILogger<AssetCardViewModel> logger,
-        Action<AssetSummary>? showInventory = null)
+        Action<AssetSummary>? showInventory = null,
+        Action<AssetSummary>? addToComparison = null,
+        bool selectedForComparison = false)
     {
         Asset = asset;
         this.imageLoader = imageLoader;
         OpenPreviewCommand = new AsyncRelayCommand(_ => openPreview(asset));
         ShowContentInventoryCommand = new RelayCommand(() => showInventory?.Invoke(asset), () => showInventory is not null);
+        AddToComparisonCommand = new RelayCommand(() => addToComparison?.Invoke(asset), () => addToComparison is not null);
         OpenFolderCommand = CreateActionCommand("Open folder", () => interactions.OpenFolder(asset.AssetFolderPath), "Opened asset folder.", reportStatus, logger);
         CopyAssetIdCommand = CreateActionCommand("Copy asset ID", () => interactions.CopyText(asset.Id), "Asset ID copied.", reportStatus, logger);
         CopyFolderPathCommand = CreateActionCommand("Copy folder path", () => interactions.CopyText(asset.AssetFolderPath), "Asset folder path copied.", reportStatus, logger);
         CopyJsonPathCommand = CreateActionCommand("Copy JSON path", () => interactions.CopyText(asset.JsonPath), "Metadata JSON path copied.", reportStatus, logger);
         Badges = BuildBadges(asset.Content);
+        isInComparison = selectedForComparison;
     }
 
     public AssetSummary Asset { get; }
@@ -118,8 +123,10 @@ public sealed class AssetCardViewModel : ObservableObject, IDisposable
 
     public ImageSource? Thumbnail { get => thumbnail; private set => SetProperty(ref thumbnail, value); }
     public bool IsHoverOpen { get => isHoverOpen; private set => SetProperty(ref isHoverOpen, value); }
+    public bool IsInComparison { get => isInComparison; private set => SetProperty(ref isInComparison, value); }
     public ICommand OpenPreviewCommand { get; }
     public ICommand ShowContentInventoryCommand { get; }
+    public ICommand AddToComparisonCommand { get; }
     public ICommand OpenFolderCommand { get; }
     public ICommand CopyAssetIdCommand { get; }
     public ICommand CopyFolderPathCommand { get; }
@@ -164,6 +171,8 @@ public sealed class AssetCardViewModel : ObservableObject, IDisposable
             cancellation.Cancel();
         }
     }
+
+    public void UpdateComparisonSelection(bool selected) => IsInComparison = selected;
 
     public void Dispose()
     {

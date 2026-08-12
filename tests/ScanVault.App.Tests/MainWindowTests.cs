@@ -22,6 +22,7 @@ public sealed class MainWindowTests
             global::ScanVault.App.MainWindow? window = null;
             global::ScanVault.App.DiagnosticsWindow? diagnosticsWindow = null;
             global::ScanVault.App.ContentInventoryWindow? contentWindow = null;
+            global::ScanVault.App.AssetComparisonWindow? comparisonWindow = null;
             try
             {
                 application = new();
@@ -80,6 +81,30 @@ public sealed class MainWindowTests
                 contentWindow.UpdateLayout();
                 var contentTabs = Assert.IsType<TabControl>(FindVisualChild<TabControl>(contentWindow));
                 Assert.Equal(4, contentTabs.Items.Count);
+                var leftAsset = CreateAsset() with { Id = "comparison-left", Name = "Comparison Left" };
+                var rightAsset = CreateAsset() with { Id = "comparison-right", Name = "Comparison Right" };
+                comparisonWindow = new()
+                {
+                    DataContext = new AssetComparisonViewModel(
+                        leftAsset,
+                        rightAsset,
+                        new NullImageLoader(),
+                        new NullInteractions(),
+                        static _ => Task.CompletedTask,
+                        static _ => { },
+                        id => id == leftAsset.Id ? leftAsset : rightAsset,
+                        static _ => { },
+                        NullLogger<AssetComparisonViewModel>.Instance),
+                    ShowActivated = false,
+                    ShowInTaskbar = false,
+                    Left = -10_000,
+                    Top = -10_000
+                };
+                comparisonWindow.Show();
+                comparisonWindow.UpdateLayout();
+                var comparisonTabs = Assert.IsType<TabControl>(FindVisualChild<TabControl>(comparisonWindow));
+                Assert.Equal(5, comparisonTabs.Items.Count);
+                Assert.Equal("Asset Comparison", comparisonWindow.Title);
             }
             catch (Exception exception)
             {
@@ -87,6 +112,7 @@ public sealed class MainWindowTests
             }
             finally
             {
+                comparisonWindow?.Close();
                 contentWindow?.Close();
                 diagnosticsWindow?.Close();
                 window?.Close();

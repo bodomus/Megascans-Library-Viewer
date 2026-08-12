@@ -29,6 +29,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly ILogger<DiagnosticsViewModel> diagnosticsLogger;
     private readonly ILogger<ScanHistoryViewModel> scanHistoryLogger;
     private readonly ILogger<ExportReportViewModel> exportReportLogger;
+    private readonly ILogger<AssetComparisonViewModel> assetComparisonLogger;
     private readonly IReportExportService reportExportService;
     private readonly ApplicationBuildInfo buildInfo;
     private IReadOnlyList<AssetSummary> allAssets = [];
@@ -50,6 +51,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private ScanAttemptStatus lastScanStatus;
     private TimeSpan? lastScanDuration;
     private string? lastScanResult;
+    private AssetSummary? comparisonLeft;
+    private AssetSummary? comparisonRight;
+    private int? replacementSlot;
+    private readonly List<AssetComparisonViewModel> comparisonSessions = [];
 
     public MainViewModel(
         IAssetIndex index,
@@ -78,6 +83,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         scanHistoryLogger = loggerFactory.CreateLogger<ScanHistoryViewModel>();
         Settings = new(settingsStore);
         exportReportLogger = loggerFactory.CreateLogger<ExportReportViewModel>();
+        assetComparisonLogger = loggerFactory.CreateLogger<AssetComparisonViewModel>();
         WindowTitle = buildInfo.WindowTitle;
         ProductVersion = buildInfo.ProductVersion;
         Preview = new(imageLoader);
@@ -95,6 +101,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         CopySelectedFolderCommand = new RelayCommand(
             CopySelectedFolder,
             () => SelectedCard is not null);
+        AddSelectedToComparisonCommand = new RelayCommand(
+            () => { if (SelectedCard is not null) AddToComparison(SelectedCard.Asset); },
+            () => SelectedCard is not null);
+        OpenComparisonCommand = new RelayCommand(OpenComparison, () => CanOpenComparison);
+        ClearComparisonCommand = new RelayCommand(ClearComparison, () => ComparisonCount > 0);
+
         ToggleHasFbxCommand = new AsyncRelayCommand(token => ToggleFilterAsync(AssetInventoryFilter.HasFbx, token));
         ToggleHasLodsCommand = new AsyncRelayCommand(token => ToggleFilterAsync(AssetInventoryFilter.HasLods, token));
         ToggleHasBillboardCommand = new AsyncRelayCommand(token => ToggleFilterAsync(AssetInventoryFilter.HasBillboard, token));
@@ -142,6 +154,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public AsyncRelayCommand OpenSelectedPreviewCommand { get; }
     public RelayCommand CopySelectedFolderCommand { get; }
     public AsyncRelayCommand ToggleHasFbxCommand { get; }
+    public RelayCommand AddSelectedToComparisonCommand { get; }
+    public RelayCommand OpenComparisonCommand { get; }
+    public RelayCommand ClearComparisonCommand { get; }
     public AsyncRelayCommand ToggleHasLodsCommand { get; }
     public AsyncRelayCommand ToggleHasBillboardCommand { get; }
     public AsyncRelayCommand ToggleHasAtlasCommand { get; }
@@ -158,6 +173,21 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public RelayCommand DeactivateSmartCollectionCommand { get; }
     public RelayCommand ResetSmartCollectionCommand { get; }
     public event Action<ContentInventoryViewModel>? ContentInventoryRequested;
+    public event Action<AssetComparisonViewModel>? AssetComparisonRequested;
+    public string ComparisonLeftName => comparisonLeft?.Name ?? "Select first asset";
+    public string ComparisonRightName => comparisonRight?.Name ?? "Select second asset";
+    public int ComparisonCount => (comparisonLeft is null ? 0 : 1) + (comparisonRight is null ? 0 : 1);
+    public bool CanOpenComparison => comparisonLeft is not null && comparisonRight is not null &&
+        !StringComparer.OrdinalIgnoreCase.Equals(comparisonLeft.Id, comparisonRight.Id);
+    public string ComparisonStateText => replacementSlot switch
+    {
+        0 => "Select replacement for left",
+        1 => "Select replacement for right",
+        _ when CanOpenComparison => "Ready to compare",
+        _ when comparisonLeft is null => "Select first asset",
+        _ => "Select second asset"
+    };
+
     public AssetInventoryFilter InventoryFilter
     {
         get => inventoryFilter;
@@ -253,6 +283,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             {
                 OpenSelectedPreviewCommand.NotifyCanExecuteChanged();
                 CopySelectedFolderCommand.NotifyCanExecuteChanged();
+                AddSelectedToComparisonCommand.NotifyCanExecuteChanged();
             }
         }
     }
@@ -1038,6 +1069,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             var result = await scanService.ScanAsync(Settings.Current, progress, cancellationToken);
             allAssets = await index.GetAssetsAsync(cancellationToken);
+            foreach (var comparison in comparisonSessions.ToArray()) comparison.MarkStale();
             SelectedFolderPath = null;
             RebuildNavigation();
             await RefreshSmartCollectionCountsAsync(cancellationToken);
@@ -1132,6 +1164,118 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     }
     private void RequestContentInventory(AssetSummary asset) =>
         ContentInventoryRequested?.Invoke(new ContentInventoryViewModel(asset, interactions, logger));
+    private void AddToComparison(AssetSummary asset)
+    {
+        if (StringComparer.OrdinalIgnoreCase.Equals(comparisonLeft?.Id, asset.Id) ||
+            StringComparer.OrdinalIgnoreCase.Equals(comparisonRight?.Id, asset.Id))
+        {
+            StatusText = $"{asset.Name} is already selected for comparison.";
+            return;
+        }
+
+        if (replacementSlot == 0)
+        {
+            comparisonLeft = asset;
+            replacementSlot = null;
+        }
+        else if (replacementSlot == 1)
+        {
+            comparisonRight = asset;
+            replacementSlot = null;
+        }
+        else if (comparisonLeft is null)
+        {
+            comparisonLeft = asset;
+        }
+        else if (comparisonRight is null)
+        {
+            comparisonRight = asset;
+        }
+        else
+        {
+            comparisonLeft = comparisonRight;
+            comparisonRight = asset;
+        }
+
+        NotifyComparisonState();
+        StatusText = ComparisonStateText;
+    }
+
+    private void OpenComparison()
+    {
+        if (comparisonLeft is null || comparisonRight is null || !CanOpenComparison)
+        {
+            StatusText = "Select two different assets to compare.";
+            return;
+        }
+
+        var viewModel = new AssetComparisonViewModel(
+            comparisonLeft,
+            comparisonRight,
+            imageLoader,
+            interactions,
+            Preview.OpenAsync,
+            RequestContentInventory,
+            ResolveCurrentAsset,
+            RequestComparisonReplacement,
+            assetComparisonLogger);
+        viewModel.Disposed += OnComparisonDisposed;
+        comparisonSessions.Add(viewModel);
+        AssetComparisonRequested?.Invoke(viewModel);
+    }
+
+    private AssetSummary? ResolveCurrentAsset(string assetId) =>
+        allAssets.FirstOrDefault(asset => StringComparer.OrdinalIgnoreCase.Equals(asset.Id, assetId));
+
+    private void RequestComparisonReplacement(string assetId)
+    {
+        if (StringComparer.OrdinalIgnoreCase.Equals(comparisonLeft?.Id, assetId))
+        {
+            comparisonLeft = null;
+            replacementSlot = 0;
+        }
+        else if (StringComparer.OrdinalIgnoreCase.Equals(comparisonRight?.Id, assetId))
+        {
+            comparisonRight = null;
+            replacementSlot = 1;
+        }
+
+        NotifyComparisonState();
+        StatusText = ComparisonStateText;
+    }
+
+    private void ClearComparison()
+    {
+        comparisonLeft = null;
+        comparisonRight = null;
+        replacementSlot = null;
+        NotifyComparisonState();
+        StatusText = ComparisonStateText;
+    }
+
+    private void OnComparisonDisposed(AssetComparisonViewModel viewModel)
+    {
+        viewModel.Disposed -= OnComparisonDisposed;
+        comparisonSessions.Remove(viewModel);
+    }
+
+    private void NotifyComparisonState()
+    {
+        OnPropertyChanged(nameof(ComparisonLeftName));
+        OnPropertyChanged(nameof(ComparisonRightName));
+        OnPropertyChanged(nameof(ComparisonCount));
+        OnPropertyChanged(nameof(CanOpenComparison));
+        OnPropertyChanged(nameof(ComparisonStateText));
+        OpenComparisonCommand.NotifyCanExecuteChanged();
+        ClearComparisonCommand.NotifyCanExecuteChanged();
+        foreach (var card in Assets)
+        {
+            card.UpdateComparisonSelection(
+                StringComparer.OrdinalIgnoreCase.Equals(card.Asset.Id, comparisonLeft?.Id) ||
+                StringComparer.OrdinalIgnoreCase.Equals(card.Asset.Id, comparisonRight?.Id));
+        }
+    }
+
     private void CancelScan()
     {
         if (scanCancellation is { IsCancellationRequested: false } cancellation)
@@ -1213,7 +1357,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 Preview.OpenAsync,
                 ReportStatus,
                 cardLogger,
-                RequestContentInventory);
+                RequestContentInventory,
+                AddToComparison,
+                StringComparer.OrdinalIgnoreCase.Equals(asset.Id, comparisonLeft?.Id) ||
+                StringComparer.OrdinalIgnoreCase.Equals(asset.Id, comparisonRight?.Id));
             Assets.Add(card);
             if (StringComparer.Ordinal.Equals(asset.Id, selectedId) &&
                 StringComparer.OrdinalIgnoreCase.Equals(asset.JsonPath, selectedJsonPath))
@@ -1274,6 +1421,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         foreach (var card in Assets)
         {
             card.Dispose();
+        }
+
+        foreach (var comparison in comparisonSessions.ToArray())
+        {
+            comparison.Dispose();
         }
 
         Preview.Dispose();
