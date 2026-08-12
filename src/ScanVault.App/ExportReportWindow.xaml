@@ -98,9 +98,9 @@
             <StackPanel>
                 <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" />
                 <TextBlock Margin="0,4,0,0" Foreground="{StaticResource TextSecondary}">
-                    <Run Text="Processed assets: " /><Run Text="{Binding ProcessedAssets, StringFormat=N0}" />
-                    <Run Text="    Written rows: " /><Run Text="{Binding WrittenRows, StringFormat=N0}" />
-                    <Run Text="    Elapsed: " /><Run Text="{Binding Elapsed}" />
+                    <Run Text="Processed assets: " /><Run Text="{Binding ProcessedAssets, Mode=OneWay, StringFormat=N0}" />
+                    <Run Text="    Written rows: " /><Run Text="{Binding WrittenRows, Mode=OneWay, StringFormat=N0}" />
+                    <Run Text="    Elapsed: " /><Run Text="{Binding Elapsed, Mode=OneWay}" />
                 </TextBlock>
             </StackPanel>
         </Border>
@@ -112,4 +112,3 @@
         </DockPanel>
     </Grid>
 </Window>
-

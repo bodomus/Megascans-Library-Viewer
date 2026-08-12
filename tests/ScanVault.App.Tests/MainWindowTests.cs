@@ -13,7 +13,7 @@ namespace ScanVault.App.Tests;
 public sealed class MainWindowTests
 {
     [Fact]
-    public void RealizesMainAndDiagnosticsWindowsWithExpectedBindings()
+    public void RealizesApplicationWindowsWithExpectedBindings()
     {
         Exception? failure = null;
         var thread = new Thread(() =>
@@ -23,6 +23,7 @@ public sealed class MainWindowTests
             global::ScanVault.App.DiagnosticsWindow? diagnosticsWindow = null;
             global::ScanVault.App.ContentInventoryWindow? contentWindow = null;
             global::ScanVault.App.AssetComparisonWindow? comparisonWindow = null;
+            global::ScanVault.App.ExportReportWindow? exportReportWindow = null;
             try
             {
                 application = new();
@@ -105,6 +106,18 @@ public sealed class MainWindowTests
                 var comparisonTabs = Assert.IsType<TabControl>(FindVisualChild<TabControl>(comparisonWindow));
                 Assert.Equal(5, comparisonTabs.Items.Count);
                 Assert.Equal("Asset Comparison", comparisonWindow.Title);
+
+                exportReportWindow = new()
+                {
+                    DataContext = new ExportReportWindowDataContext(),
+                    ShowActivated = false,
+                    ShowInTaskbar = false,
+                    Left = -10_000,
+                    Top = -10_000
+                };
+                exportReportWindow.Show();
+                exportReportWindow.UpdateLayout();
+                Assert.Equal("Export Report", exportReportWindow.Title);
             }
             catch (Exception exception)
             {
@@ -112,6 +125,7 @@ public sealed class MainWindowTests
             }
             finally
             {
+                exportReportWindow?.Close();
                 comparisonWindow?.Close();
                 contentWindow?.Close();
                 diagnosticsWindow?.Close();
@@ -214,6 +228,15 @@ public sealed class MainWindowTests
         public IReadOnlyList<AssetSortOption> SortOptions { get; } = [];
 
         public string WindowTitle { get; } = "ScanVault Test 9.8.7";
+    }
+
+    private sealed record ExportReportWindowDataContext
+    {
+        public int ProcessedAssets { get; } = 7;
+
+        public long WrittenRows { get; } = 11;
+
+        public TimeSpan Elapsed { get; } = TimeSpan.FromSeconds(2);
     }
 
     private sealed class NullImageLoader : IImageLoader
