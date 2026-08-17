@@ -15,10 +15,27 @@ public sealed record UnrealImportTextureRow(UnrealImportSemanticRole Role, Textu
 public sealed record UnrealImportLodRow(string Variant, int Lod, MeshFormat Format, string SourcePath);
 public sealed record UnrealImportValidationRow(UnrealImportValidationSeverity Severity, UnrealImportPackageIssueCode Code, string Message, string? RelatedPath);
 
-public sealed class UnrealImportParameterRow(UnrealImportSemanticRole role, string parameterName, Action changed) : ObservableObject
+public sealed class UnrealImportParameterRow(
+    UnrealImportSemanticRole role,
+    bool isEnabled,
+    string parameterName,
+    Action changed) : ObservableObject
 {
+    private bool isEnabled = isEnabled;
     private string parameterName = parameterName;
     public UnrealImportSemanticRole Role { get; } = role;
+    public bool IsEnabled
+    {
+        get => isEnabled;
+        set
+        {
+            if (SetProperty(ref isEnabled, value))
+            {
+                changed();
+            }
+        }
+    }
+
     public string ParameterName
     {
         get => parameterName;
@@ -567,9 +584,11 @@ public sealed class UnrealImportPackageViewModel : ObservableObject
             .ToDictionary(static group => group.Key, static group => group.First().ParameterName);
         foreach (var mapping in UnrealMaterialProfilePolicy.DefaultTextureParameterMappings())
         {
+            var isEnabled = mappings.TryGetValue(mapping.Role, out var parameterName);
             ParameterMappings.Add(new(
                 mapping.Role,
-                mappings.TryGetValue(mapping.Role, out var parameterName) ? parameterName : mapping.ParameterName,
+                isEnabled,
+                isEnabled ? parameterName ?? mapping.ParameterName : mapping.ParameterName,
                 RefreshPackage));
         }
     }
@@ -585,6 +604,7 @@ public sealed class UnrealImportPackageViewModel : ObservableObject
             .Select(static option => option.AssetType)
             .ToArray();
         var mappings = ParameterMappings
+            .Where(static row => row.IsEnabled)
             .Select(static row => new UnrealImportTextureParameterMapping(row.Role, row.ParameterName.Trim()))
             .ToArray();
         return profile with
@@ -633,7 +653,7 @@ public sealed class UnrealImportPackageViewModel : ObservableObject
             UnrealImportDestinationPolicy.Create(UnrealImportPackageSettings.Default.DefaultDestinationBasePath, asset),
             null,
             [],
-            new(string.Empty, string.Empty, null, null, string.Empty, "MI_", [], false),
+            new(string.Empty, string.Empty, null, [], null, string.Empty, "MI_", [], false),
             new(true, false, true, false),
             new([]));
 }

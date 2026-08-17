@@ -108,6 +108,33 @@ public sealed class UnrealImportPackagePolicyTests
         Assert.NotEqual(baseline.PackageId, changedMapping.PackageId);
     }
 
+    // Unit test: package identity tracks compatible asset types as part of the material contract.
+    [Fact]
+    public void PackageIdentityTracksMaterialProfileAssetTypes()
+    {
+        var asset = CreateAsset("Surface", "surface_4K_Albedo.jpg", "surface_4K_Normal.jpg");
+        var profile = Profile();
+        var baseline = UnrealImportPackagePolicy.Create(Request(asset, profile: profile with { AssetTypes = ["Surface"] }));
+        var expanded = UnrealImportPackagePolicy.Create(Request(asset, profile: profile with { AssetTypes = ["Surface", "Decal"] }));
+
+        Assert.NotEqual(baseline.PackageId, expanded.PackageId);
+        Assert.Equal(["Surface"], baseline.Material.AssetTypes);
+        Assert.Equal(["Decal", "Surface"], expanded.Material.AssetTypes);
+    }
+
+    // Unit test: equivalent material profile asset-type ordering does not affect package identity.
+    [Fact]
+    public void PackageIdentityIgnoresEquivalentMaterialProfileAssetTypeOrdering()
+    {
+        var asset = CreateAsset("Surface", "surface_4K_Albedo.jpg", "surface_4K_Normal.jpg");
+        var profile = Profile();
+        var first = UnrealImportPackagePolicy.Create(Request(asset, profile: profile with { AssetTypes = ["Surface", "Decal"] }));
+        var second = UnrealImportPackagePolicy.Create(Request(asset, profile: profile with { AssetTypes = ["Decal", "Surface"] }));
+
+        Assert.Equal(first.PackageId, second.PackageId);
+        Assert.Equal(first.Material.AssetTypes, second.Material.AssetTypes);
+    }
+
     // Unit test: package identity tracks source revision, texture semantic fields, and LOD fields.
     [Fact]
     public void PackageIdentityTracksSourceTextureAndLodSemanticFields()
@@ -215,6 +242,109 @@ public sealed class UnrealImportPackagePolicyTests
             "surface_4K_Roughness.jpg");
 
         Assert.DoesNotContain(package.Validation.Issues, static issue => issue.Code == UnrealImportPackageIssueCode.AmbiguousTextureRole);
+    }
+
+    // Unit test: compatible material profiles do not create compatibility validation errors.
+    [Fact]
+    public void CompatibleMaterialProfileDoesNotCreateValidationError()
+    {
+        var package = CreatePackage("Surface",
+            "surface_4K_Albedo.jpg",
+            "surface_4K_Normal.jpg");
+
+        Assert.DoesNotContain(package.Validation.Issues, static issue => issue.Code == UnrealImportPackageIssueCode.IncompatibleMaterialProfile);
+    }
+
+    // Unit test: incompatible material profiles block package export through validation errors.
+    [Fact]
+    public void IncompatibleMaterialProfileCreatesValidationError()
+    {
+        var asset = CreateAsset("Surface",
+            "surface_4K_Albedo.jpg",
+            "surface_4K_Normal.jpg");
+        var profile = Profile() with { AssetTypes = ["Decal"] };
+        var package = UnrealImportPackagePolicy.Create(Request(asset, profile: profile));
+
+        Assert.True(package.Validation.HasErrors);
+        Assert.Contains(package.Validation.Issues, static issue =>
+            issue.Code == UnrealImportPackageIssueCode.IncompatibleMaterialProfile &&
+            issue.Severity == UnrealImportValidationSeverity.Error);
+    }
+
+    // Unit test: inactive optional mappings are absent from the manifest snapshot and do not create missing-texture warnings.
+    [Fact]
+    public void InactiveOptionalMappingsAreOmittedAndDoNotWarn()
+    {
+        var asset = CreateAsset("Surface",
+            "surface_4K_Albedo.jpg",
+            "surface_4K_Normal.jpg");
+        var profile = Profile() with
+        {
+            TextureParameterMappings =
+            [
+                new(UnrealImportSemanticRole.BaseColor, "MyBaseColor"),
+                new(UnrealImportSemanticRole.Normal, "MyNormal")
+            ]
+        };
+        var package = UnrealImportPackagePolicy.Create(Request(asset, profile: profile));
+
+        Assert.Equal(2, package.Material.TextureParameterMappings.Count);
+        Assert.DoesNotContain(package.Material.TextureParameterMappings, static mapping => mapping.Role == UnrealImportSemanticRole.Displacement);
+        Assert.DoesNotContain(package.Validation.Issues, static issue => issue.Code == UnrealImportPackageIssueCode.MissingOptionalTexture);
+    }
+
+    // Unit test: active optional mappings still warn when the source texture role is absent.
+    [Fact]
+    public void ActiveOptionalMappingWarnsWhenTextureIsMissing()
+    {
+        var package = CreatePackage("Surface",
+            "surface_4K_Albedo.jpg",
+            "surface_4K_Normal.jpg");
+
+        Assert.Contains(package.Validation.Issues, static issue =>
+            issue.Code == UnrealImportPackageIssueCode.MissingOptionalTexture &&
+            issue.Message.Contains(nameof(UnrealImportSemanticRole.Displacement), StringComparison.Ordinal));
+    }
+
+    // Unit test: enabling or disabling a mapping changes package identity.
+    [Fact]
+    public void PackageIdentityTracksActiveMappingSet()
+    {
+        var asset = CreateAsset("Surface",
+            "surface_4K_Albedo.jpg",
+            "surface_4K_Normal.jpg",
+            "surface_4K_Displacement.exr");
+        var profile = Profile();
+        var enabled = UnrealImportPackagePolicy.Create(Request(asset, profile: profile));
+        var disabled = UnrealImportPackagePolicy.Create(Request(asset, profile: profile with
+        {
+            TextureParameterMappings = profile.TextureParameterMappings
+                .Where(static mapping => mapping.Role != UnrealImportSemanticRole.Displacement)
+                .ToArray()
+        }));
+
+        Assert.NotEqual(enabled.PackageId, disabled.PackageId);
+    }
+
+    // Unit test: active mapping parameter names are part of package identity.
+    [Fact]
+    public void PackageIdentityTracksActiveMappingParameterName()
+    {
+        var asset = CreateAsset("Surface",
+            "surface_4K_Albedo.jpg",
+            "surface_4K_Normal.jpg");
+        var profile = Profile();
+        var baseline = UnrealImportPackagePolicy.Create(Request(asset, profile: profile));
+        var renamed = UnrealImportPackagePolicy.Create(Request(asset, profile: profile with
+        {
+            TextureParameterMappings = profile.TextureParameterMappings
+                .Select(static mapping => mapping.Role == UnrealImportSemanticRole.Normal
+                    ? mapping with { ParameterName = "RenamedNormal" }
+                    : mapping)
+                .ToArray()
+        }));
+
+        Assert.NotEqual(baseline.PackageId, renamed.PackageId);
     }
 
     // Unit test: material profile compatibility only returns profiles matching the normalized asset type.

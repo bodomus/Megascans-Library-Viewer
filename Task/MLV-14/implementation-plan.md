@@ -48,3 +48,10 @@
 - Detect duplicate semantic texture-role candidates before deterministic candidate collapse, preserve ambiguity warnings through export revalidation, and document the selection priority.
 - Complete the material profile editor with new profile creation, compatible asset-type toggles, editable mappings, editable default options, validation, and user-profile persistence coverage.
 - Keep built-in profiles immutable and ensure unsaved profile edits refresh the preview/package identity without persisting until `Save user`.
+
+## Final Fix Scope
+
+- Add material-profile compatible asset types to the manifest snapshot and include the sorted compatibility set in `packageId`.
+- Add `IncompatibleMaterialProfile` validation so packages cannot export when the selected profile does not support the current asset type.
+- Treat `TextureParameterMappings` as active mappings only: editor rows keep separate enabled state, disabled roles remain absent during preview/save/export, and optional texture warnings only apply to active mappings.
+- Add Core, Infrastructure, and App regression coverage for profile compatibility, active/absent mapping semantics, persistence, and preview/export gating.

@@ -31,7 +31,7 @@ The schema version belongs to the import-package contract and is independent fro
 - `destination`: user base `/Game/...` path, final content path, sanitized asset base name, and original source name.
 - `mesh`: selected primary variant and ordered LOD entries when present.
 - `textures`: one deterministic source per supported semantic role.
-- `material`: selected material profile snapshot, Master Material path, Material Instance name, prefix, and parameter mappings.
+- `material`: selected material profile snapshot, compatible asset types, Master Material path, Material Instance name, prefix, and active parameter mappings.
 - `options`: declarative import choices such as `importLods`, `enableNanite`, and `createMaterialInstance`.
 - `validation`: deterministic errors/warnings/information for preview and export.
 
@@ -76,6 +76,7 @@ For the `Roughness` role, native `Roughness` is preferred over `Gloss`; `Gloss` 
 - destination content path;
 - sanitized asset base name;
 - material profile ID;
+- material profile compatible asset types sorted case-insensitively and normalized to uppercase for identity hashing;
 - Master Material path;
 - Material Instance prefix;
 - generated Material Instance name;
@@ -120,6 +121,8 @@ Sanitization handles whitespace, punctuation, slash/backslash, repeated separato
 
 Material profiles are declarative templates. They include stable ID, name, compatible asset types, Master Material path, Material Instance prefix, default options, and semantic-role-to-parameter mappings.
 
+The material profile snapshot in every manifest includes the compatible asset-type set from the selected profile. Package validation blocks export when the current source asset type is not present in that set, using case-insensitive comparison. ScanVault does not silently re-enable the current asset type or switch profiles; a user can save a profile for another asset type, but cannot export it for an incompatible current asset.
+
 Built-in templates are provided for Surface, 3D Asset, 3D Plant, Atlas, Decal, and Billboard. Built-ins are visible, selectable, and usable, but not destructively edited or deleted.
 
 The package window includes a simple profile editor. A user can create a new profile, duplicate a built-in or user profile, edit user profiles, save, and delete user profiles. Editable user-profile fields are:
@@ -129,10 +132,17 @@ The package window includes a simple profile editor. A user can create a new pro
 - compatible asset types;
 - Master Material `/Game/...` path;
 - Material Instance prefix;
-- texture parameter mappings for BaseColor, Normal, Roughness, AO, Displacement, and Opacity;
+- active texture parameter mappings for BaseColor, Normal, Roughness, AO, Displacement, and Opacity;
 - default Import LODs, Enable Nanite, and Create Material Instance options.
 
 `New Profile` creates a mutable user profile for the current asset type from the current built-in template and does not persist it until `Save user` is used. `Duplicate` creates a mutable user copy of the current profile and also waits for `Save user` before persistence.
+
+Mapping presence is part of the UE57Editor contract:
+
+- mapping present: UE57Editor should assign that semantic role to the named Material Instance parameter;
+- mapping absent: UE57Editor should not assign that semantic role.
+
+The editor shows every supported role, but enabled state is separate from the parameter-name suggestion. Disabled mappings are not serialized into the profile or manifest, do not trigger missing optional texture warnings, and do not affect `packageId` through placeholder text. Enabling a mapping, disabling a mapping, or changing an active parameter name changes `packageId`.
 
 ScanVault validates only profile syntax. It does not verify that the Master Material or parameter names exist in Unreal.
 

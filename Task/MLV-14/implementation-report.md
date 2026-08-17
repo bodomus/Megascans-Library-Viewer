@@ -16,15 +16,17 @@
 - Addressed review findings by expanding package identity to include material contract fields, selected texture/LOD semantics, and indexed source revision.
 - Moved ambiguous texture-role detection before deterministic candidate collapse and preserved those warnings through export validation.
 - Completed the material profile editor for user profiles: new profile creation, compatible asset types, editable mappings, editable default options, validation, and persistence tests.
+- Added material-profile compatibility to the manifest snapshot and `packageId`; incompatible profile/asset-type combinations now produce `IncompatibleMaterialProfile` errors and block export.
+- Preserved intentionally absent texture parameter mappings: disabled editor rows are not saved, not exported, do not create optional texture warnings, and only active mappings contribute to `packageId`.
 
 ## Validation
 
 - `dotnet restore ScanVault.sln -v:minimal` passed after sandbox escalation.
 - `dotnet build ScanVault.sln --configuration Release --no-restore -m:1 -v:minimal` passed.
 - `dotnet test ScanVault.sln --configuration Release --no-build -m:1 -v:minimal` passed:
-  - Core: 90 tests
+  - Core: 98 tests
   - Infrastructure: 65 tests
-  - App: 41 tests
+  - App: 44 tests
 - `dotnet format ScanVault.sln --verify-no-changes --no-restore` passed after sandbox escalation for build-host named pipe access.
 - `git diff --check` passed. Git reported line-ending normalization warnings only.
 - `code-review-graph update --brief` passed after implementation.

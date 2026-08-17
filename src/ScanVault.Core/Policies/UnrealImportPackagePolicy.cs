@@ -53,6 +53,16 @@ public static class UnrealImportPackagePolicy
         builder.Append("destination=").Append(NormalizePath(package.Destination.ContentPath)).Append('\n');
         builder.Append("assetBaseName=").Append(package.Destination.AssetBaseName).Append('\n');
         builder.Append("profile=").Append(package.Material.Id).Append('\n');
+        foreach (var assetType in package.Material.AssetTypes
+                     .Select(static assetType => assetType.Trim())
+                     .Where(static assetType => assetType.Length > 0)
+                     .OrderBy(static assetType => assetType, Comparer))
+        {
+            builder.Append("profileAssetType=")
+                .Append(assetType.ToUpperInvariant())
+                .Append('\n');
+        }
+
         builder.Append("masterMaterial=").Append(NormalizePath(package.Material.MasterMaterialPath ?? string.Empty)).Append('\n');
         builder.Append("materialInstancePrefix=").Append(package.Material.MaterialInstancePrefix).Append('\n');
         builder.Append("materialInstanceName=").Append(package.Material.MaterialInstanceName).Append('\n');
@@ -128,6 +138,11 @@ public static class UnrealImportPackagePolicy
             profile.Id,
             profile.Name,
             profile.Description,
+            profile.AssetTypes
+                .Select(static assetType => assetType.Trim())
+                .Where(static assetType => assetType.Length > 0)
+                .OrderBy(static assetType => assetType, Comparer)
+                .ToArray(),
             profile.MasterMaterialPath,
             UnrealImportNamePolicy.MaterialInstanceName(profile.MaterialInstancePrefix, assetBaseName),
             UnrealImportNamePolicy.SanitizePrefix(profile.MaterialInstancePrefix),

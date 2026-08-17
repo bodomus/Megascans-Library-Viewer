@@ -205,6 +205,76 @@ public sealed class UnrealImportPackageViewModelTests : IDisposable
             mapping.Role == UnrealImportSemanticRole.Normal && mapping.ParameterName == "ChangedNormal");
     }
 
+    // Unit test: editing profile compatibility immediately blocks export for the current incompatible asset type.
+    [Fact]
+    public async Task IncompatibleProfileEditRefreshesValidationAndCanExport()
+    {
+        var viewModel = CreateViewModel(CreateAsset("compatibility-edit", "Surface"));
+        await viewModel.LoadAsync(CancellationToken.None);
+        viewModel.DestinationPath = Path.Combine(root, "compatibility-edit.scanvault-ue.json");
+        await viewModel.NewProfileCommand.ExecuteAsync(CancellationToken.None);
+
+        viewModel.AssetTypeOptions.Single(static option => option.AssetType == "Decal").IsSelected = true;
+        viewModel.AssetTypeOptions.Single(static option => option.AssetType == "Surface").IsSelected = false;
+
+        Assert.False(viewModel.CanExport);
+        Assert.Contains(viewModel.ValidationIssues, static issue =>
+            issue.Code == UnrealImportPackageIssueCode.IncompatibleMaterialProfile &&
+            issue.Severity == UnrealImportValidationSeverity.Error);
+
+        viewModel.AssetTypeOptions.Single(static option => option.AssetType == "Surface").IsSelected = true;
+
+        Assert.True(viewModel.CanExport);
+        Assert.DoesNotContain(viewModel.ValidationIssues, static issue => issue.Code == UnrealImportPackageIssueCode.IncompatibleMaterialProfile);
+    }
+
+    // Unit test: disabled material mappings are saved as absent mappings and remain disabled after reload.
+    [Fact]
+    public async Task DisabledMappingSavesAndReloadsAsAbsent()
+    {
+        var store = new MemoryProfileStore();
+        var viewModel = CreateViewModel(CreateAsset("disabled-save", "Surface"), profileStore: store);
+        await viewModel.LoadAsync(CancellationToken.None);
+        await viewModel.NewProfileCommand.ExecuteAsync(CancellationToken.None);
+        viewModel.EditableProfileName = "Mapping Subset";
+        viewModel.ParameterMappings.Single(static row => row.Role == UnrealImportSemanticRole.Displacement).IsEnabled = false;
+
+        await viewModel.SaveProfileCommand.ExecuteAsync(CancellationToken.None);
+        var saved = Assert.Single(store.Profiles);
+
+        Assert.DoesNotContain(saved.TextureParameterMappings, static mapping => mapping.Role == UnrealImportSemanticRole.Displacement);
+
+        var reloaded = CreateViewModel(CreateAsset("disabled-reload", "Surface"), profileStore: store);
+        await reloaded.LoadAsync(CancellationToken.None);
+        reloaded.SelectedProfile = reloaded.Profiles.Single(static option => option.Profile.Name == "Mapping Subset").Profile;
+
+        Assert.False(reloaded.ParameterMappings.Single(static row => row.Role == UnrealImportSemanticRole.Displacement).IsEnabled);
+        Assert.DoesNotContain(reloaded.Package.Material.TextureParameterMappings, static mapping => mapping.Role == UnrealImportSemanticRole.Displacement);
+    }
+
+    // Unit test: mapping enablement changes preview identity while disabled placeholder edits do not.
+    [Fact]
+    public async Task MappingEnablementRefreshesPackageIdentity()
+    {
+        var viewModel = CreateViewModel(CreateAsset("mapping-identity", "Surface"));
+        await viewModel.LoadAsync(CancellationToken.None);
+        await viewModel.NewProfileCommand.ExecuteAsync(CancellationToken.None);
+        var row = viewModel.ParameterMappings.Single(static mapping => mapping.Role == UnrealImportSemanticRole.Displacement);
+        var original = viewModel.PackageId;
+
+        row.IsEnabled = false;
+        var disabled = viewModel.PackageId;
+        row.ParameterName = "DisabledPlaceholder";
+        var disabledPlaceholder = viewModel.PackageId;
+        row.IsEnabled = true;
+
+        Assert.NotEqual(original, disabled);
+        Assert.Equal(disabled, disabledPlaceholder);
+        Assert.NotEqual(disabledPlaceholder, viewModel.PackageId);
+        Assert.Contains(viewModel.Package.Material.TextureParameterMappings, static mapping =>
+            mapping.Role == UnrealImportSemanticRole.Displacement && mapping.ParameterName == "DisabledPlaceholder");
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(root))

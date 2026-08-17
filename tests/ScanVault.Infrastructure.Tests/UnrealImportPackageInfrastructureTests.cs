@@ -62,6 +62,8 @@ public sealed class UnrealImportPackageInfrastructureTests
         Assert.Equal(profile.MasterMaterialPath, actual.MasterMaterialPath);
         Assert.Equal(profile.MaterialInstancePrefix, actual.MaterialInstancePrefix);
         Assert.Equal(profile.TextureParameterMappings, actual.TextureParameterMappings);
+        Assert.Equal(2, actual.TextureParameterMappings.Count);
+        Assert.DoesNotContain(actual.TextureParameterMappings, static mapping => mapping.Role == UnrealImportSemanticRole.Displacement);
         Assert.Equal(profile.DefaultOptions, actual.DefaultOptions);
     }
 

@@ -84,6 +84,7 @@ public static class UnrealImportPackageValidationPolicy
             }
         }
 
+        AddMaterialCompatibilityIssues(package, issues);
         AddMaterialMappingIssues(package, issues);
         AddTextureMappingIssues(package, issues);
         AddSourceExistenceIssues(package, sourceExists, issues);
@@ -96,6 +97,25 @@ public static class UnrealImportPackageValidationPolicy
             .ToArray());
     }
 
+    private static void AddMaterialCompatibilityIssues(
+        UnrealImportPackage package,
+        List<UnrealImportPackageIssue> issues)
+    {
+        if (package.Material.AssetTypes.Count == 0)
+        {
+            issues.Add(Error(UnrealImportPackageIssueCode.IncompatibleMaterialProfile,
+                $"Material profile '{package.Material.Name}' does not declare compatible asset types.", null));
+            return;
+        }
+
+        if (!package.Material.AssetTypes.Any(type => Comparer.Equals(type.Trim(), package.Source.AssetType.Trim())))
+        {
+            issues.Add(Error(UnrealImportPackageIssueCode.IncompatibleMaterialProfile,
+                $"Material profile '{package.Material.Name}' is not compatible with asset type '{package.Source.AssetType}'.",
+                null));
+        }
+    }
+
     private static void AddMaterialMappingIssues(
         UnrealImportPackage package,
         List<UnrealImportPackageIssue> issues)
@@ -106,10 +126,10 @@ public static class UnrealImportPackageValidationPolicy
                 "Material Instance prefix is required.", null));
         }
 
-        if (package.Material.TextureParameterMappings.Count == 0)
+        if (package.Options.CreateMaterialInstance && package.Material.TextureParameterMappings.Count == 0)
         {
             issues.Add(Error(UnrealImportPackageIssueCode.MissingProfile,
-                "At least one texture parameter mapping is required.", null));
+                "At least one active texture parameter mapping is required when creating a Material Instance.", null));
         }
 
         foreach (var group in package.Material.TextureParameterMappings

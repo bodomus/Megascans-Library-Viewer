@@ -8,6 +8,8 @@ The feature adds a versioned JSON contract, deterministic Core package generatio
 
 Review findings were addressed in the same `master` working tree: package identity now tracks material contract and source-revision semantics, duplicate semantic texture candidates are detected before collapse, and the material profile editor now supports full user-profile editing instead of only name/path/prefix edits.
 
+Final compatibility/mapping findings were also addressed in `master`: material profile snapshots now carry compatible asset types, incompatible profile usage is a validation error, and disabled texture parameter mappings remain absent instead of being silently recreated from defaults.
+
 ## Changed Areas
 
 - Core manifest/domain models and policies.
@@ -16,6 +18,7 @@ Review findings were addressed in the same `master` working tree: package identi
 - App ViewModel/window/commands for package preview, copy, profile selection, and export.
 - Documentation and tests.
 - Review-fix coverage for package identity, texture ambiguity, material profile persistence, and editable WPF ViewModel behavior.
+- Final-fix coverage for profile compatibility, active/absent mapping semantics, optional texture warnings, and persistence after reload.
 
 ## Validation
 
@@ -27,9 +30,9 @@ Review findings were addressed in the same `master` working tree: package identi
 - `code-review-graph update --brief` and `code-review-graph detect-changes --base HEAD --brief` passed.
 - `graphify update` failed with `[WinError 5] Access is denied`.
 - Test totals after implementation:
-  - Core: 90
+  - Core: 98
   - Infrastructure: 65
-  - App: 41
+  - App: 44
 
 ## Explicit Non-Goals Preserved
 
