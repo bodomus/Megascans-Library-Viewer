@@ -7,15 +7,15 @@
     <AnalysisLevel>latest-recommended</AnalysisLevel>
 
     <!-- MLV-5: the single authoritative product-version source. -->
-    <VersionPrefix>0.2.0</VersionPrefix>
-    <VersionSuffix Condition="'$(VersionSuffix)' == ''">dev</VersionSuffix>
-    <Version>$(VersionPrefix)-$(VersionSuffix)</Version>
+    <VersionPrefix>0.5.0</VersionPrefix>
+    <VersionSuffix Condition="'$(VersionSuffix)' == '' and '$(Configuration)' != 'Release'">dev</VersionSuffix>
+	<Version Condition="'$(VersionSuffix)' != ''">$(VersionPrefix)-$(VersionSuffix)</Version>
+	<Version Condition="'$(VersionSuffix)' == ''">$(VersionPrefix)</Version>
     <AssemblyVersion>$(VersionPrefix).0</AssemblyVersion>
     <FileVersion>$(VersionPrefix).0</FileVersion>
     <InformationalVersion>$(Version)</InformationalVersion>
     <InformationalVersion Condition="'$(CommitSha)' != ''">$(Version)+$(CommitSha)</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
-
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
   </PropertyGroup>
