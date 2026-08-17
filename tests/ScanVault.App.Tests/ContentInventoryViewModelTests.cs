@@ -78,5 +78,6 @@ public sealed class ContentInventoryViewModelTests
         public string? CopiedText { get; private set; }
         public void CopyText(string text) => CopiedText = text;
         public void OpenFolder(string folderPath) { }
+        public void OpenFile(string filePath) { }
     }
 }

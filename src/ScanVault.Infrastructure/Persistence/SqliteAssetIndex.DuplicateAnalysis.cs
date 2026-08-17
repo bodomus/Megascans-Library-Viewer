@@ -1,7 +1,9 @@
 using System.Globalization;
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using ScanVault.Core.Abstractions;
 using ScanVault.Core.Models;
+using ScanVault.Core.Policies;
 
 namespace ScanVault.Infrastructure.Persistence;
 
@@ -73,6 +75,34 @@ public sealed partial class SqliteAssetIndex
         Add(command, "$id", runId);
         Add(command, "$running", (int)DuplicateAnalysisStatus.Running);
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyList<AssetSummary>> GetDuplicateAnalysisSourcesAsync(
+        string libraryRoot,
+        CancellationToken cancellationToken)
+    {
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        if (!Compatibility.IsReadable) return [];
+
+        var identity = NormalizeLibraryIdentity(libraryRoot);
+        await using var connection = await OpenReadOnlyAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT asset_json
+            FROM duplicate_analysis_sources
+            WHERE library_identity = $identity
+            ORDER BY asset_key COLLATE NOCASE;
+            """;
+        Add(command, "$identity", identity);
+
+        var sources = new List<AssetSummary>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            if (JsonSerializer.Deserialize<AssetSummary>(reader.GetString(0)) is { } asset) sources.Add(asset);
+        }
+
+        return sources.Count == 0 ? await GetAssetsAsync(cancellationToken).ConfigureAwait(false) : sources;
     }
 
     public async Task PersistDuplicateAnalysisAsync(
@@ -230,7 +260,7 @@ public sealed partial class SqliteAssetIndex
         await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            await CreateDuplicateAnalysisTablesAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
+            await CreateVersionFiveDuplicateAnalysisTablesAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
             await ExecuteAsync(connection, transaction, "UPDATE schema_info SET version = 5;", cancellationToken).ConfigureAwait(false);
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -241,7 +271,107 @@ public sealed partial class SqliteAssetIndex
         }
     }
 
+    private static async Task MigrateVersionFiveAsync(SqliteConnection connection, CancellationToken cancellationToken)
+    {
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await CreateDuplicateAnalysisSourceTableAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
+            await ExecuteAsync(connection, transaction, """
+                ALTER TABLE duplicate_group_members ADD COLUMN json_path TEXT NOT NULL DEFAULT '';
+                UPDATE schema_info SET version = 6;
+                """, cancellationToken).ConfigureAwait(false);
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None).ConfigureAwait(false);
+            throw;
+        }
+    }
+
     private static async Task CreateDuplicateAnalysisTablesAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        await ExecuteAsync(connection, transaction, """
+            CREATE TABLE file_hash_cache (
+                normalized_path TEXT NOT NULL COLLATE NOCASE,
+                file_size_bytes INTEGER NOT NULL,
+                last_write_time_utc TEXT NOT NULL,
+                hash_algorithm TEXT NOT NULL,
+                hash_algorithm_version INTEGER NOT NULL,
+                content_hash TEXT NOT NULL,
+                computed_at_utc TEXT NOT NULL,
+                PRIMARY KEY(normalized_path, hash_algorithm, hash_algorithm_version)
+            );
+            CREATE TABLE duplicate_analysis_runs (
+                id TEXT PRIMARY KEY,
+                library_identity TEXT NOT NULL COLLATE NOCASE,
+                library_root TEXT NOT NULL,
+                started_at_utc TEXT NOT NULL,
+                finished_at_utc TEXT NULL,
+                status INTEGER NOT NULL,
+                is_stale INTEGER NOT NULL,
+                total_assets INTEGER NOT NULL,
+                candidate_assets INTEGER NOT NULL,
+                files_hashed INTEGER NOT NULL,
+                bytes_hashed INTEGER NOT NULL,
+                cache_hits INTEGER NOT NULL,
+                duration_ms INTEGER NULL,
+                error_message TEXT NULL,
+                exact_duplicate_groups INTEGER NOT NULL,
+                conflicting_id_groups INTEGER NOT NULL,
+                probable_duplicate_groups INTEGER NOT NULL,
+                partial_duplicate_groups INTEGER NOT NULL,
+                assets_involved INTEGER NOT NULL,
+                potential_reclaimable_size_bytes INTEGER NOT NULL
+            );
+            CREATE TABLE duplicate_groups (
+                run_id TEXT NOT NULL,
+                group_id TEXT NOT NULL,
+                category INTEGER NOT NULL,
+                confidence INTEGER NOT NULL,
+                estimated_duplicate_size_bytes INTEGER NOT NULL,
+                matched_fields TEXT NOT NULL,
+                different_fields TEXT NOT NULL,
+                PRIMARY KEY(run_id, group_id),
+                FOREIGN KEY(run_id) REFERENCES duplicate_analysis_runs(id) ON DELETE CASCADE
+            );
+            CREATE TABLE duplicate_group_members (
+                run_id TEXT NOT NULL,
+                group_id TEXT NOT NULL,
+                ordinal INTEGER NOT NULL,
+                asset_id TEXT NOT NULL COLLATE NOCASE,
+                asset_name TEXT NOT NULL,
+                asset_type TEXT NOT NULL,
+                relative_path TEXT NOT NULL,
+                asset_folder_path TEXT NOT NULL,
+                json_path TEXT NOT NULL,
+                completeness INTEGER NOT NULL,
+                file_count INTEGER NOT NULL,
+                total_size_bytes INTEGER NOT NULL,
+                hash_status INTEGER NOT NULL,
+                PRIMARY KEY(run_id, group_id, ordinal),
+                FOREIGN KEY(run_id, group_id) REFERENCES duplicate_groups(run_id, group_id) ON DELETE CASCADE
+            );
+            CREATE TABLE duplicate_reasons (
+                run_id TEXT NOT NULL,
+                group_id TEXT NOT NULL,
+                ordinal INTEGER NOT NULL,
+                field TEXT NOT NULL,
+                message TEXT NOT NULL,
+                PRIMARY KEY(run_id, group_id, ordinal),
+                FOREIGN KEY(run_id, group_id) REFERENCES duplicate_groups(run_id, group_id) ON DELETE CASCADE
+            );
+            CREATE INDEX ix_file_hash_cache_metadata ON file_hash_cache(normalized_path, file_size_bytes, last_write_time_utc);
+            CREATE INDEX ix_duplicate_runs_library_finished ON duplicate_analysis_runs(library_identity, status, is_stale, finished_at_utc DESC);
+            """, cancellationToken).ConfigureAwait(false);
+        await CreateDuplicateAnalysisSourceTableAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task CreateVersionFiveDuplicateAnalysisTablesAsync(
         SqliteConnection connection,
         SqliteTransaction transaction,
         CancellationToken cancellationToken)
@@ -320,6 +450,64 @@ public sealed partial class SqliteAssetIndex
             """, cancellationToken).ConfigureAwait(false);
     }
 
+    private static async Task CreateDuplicateAnalysisSourceTableAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        await ExecuteAsync(connection, transaction, """
+            CREATE TABLE duplicate_analysis_sources (
+                library_identity TEXT NOT NULL COLLATE NOCASE,
+                asset_key TEXT NOT NULL COLLATE NOCASE,
+                asset_id TEXT NOT NULL COLLATE NOCASE,
+                asset_json TEXT NOT NULL,
+                is_browsable_winner INTEGER NOT NULL,
+                scan_run_id TEXT NULL,
+                PRIMARY KEY(library_identity, asset_key)
+            );
+            CREATE INDEX ix_duplicate_sources_asset_id ON duplicate_analysis_sources(library_identity, asset_id);
+            """, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task ReplaceDuplicateAnalysisSourcesAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string libraryRoot,
+        IReadOnlyList<AssetSummary> sources,
+        IReadOnlyList<AssetSummary> browsableAssets,
+        string scanRunId,
+        CancellationToken cancellationToken)
+    {
+        var identity = NormalizeLibraryIdentity(libraryRoot);
+        var winners = browsableAssets.Select(static asset => asset.JsonPath).ToHashSet(PathPolicy.Comparer);
+        await using (var delete = connection.CreateCommand())
+        {
+            delete.Transaction = transaction;
+            delete.CommandText = "DELETE FROM duplicate_analysis_sources WHERE library_identity = $identity;";
+            Add(delete, "$identity", identity);
+            await delete.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        foreach (var asset in sources)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = """
+                INSERT INTO duplicate_analysis_sources(library_identity, asset_key, asset_id,
+                    asset_json, is_browsable_winner, scan_run_id)
+                VALUES($identity, $key, $assetId, $assetJson, $winner, $scanRunId);
+                """;
+            Add(command, "$identity", identity);
+            Add(command, "$key", asset.JsonPath);
+            Add(command, "$assetId", asset.Id);
+            Add(command, "$assetJson", JsonSerializer.Serialize(asset));
+            Add(command, "$winner", winners.Contains(asset.JsonPath));
+            Add(command, "$scanRunId", scanRunId);
+            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
+
     private static async Task MarkDuplicateAnalysesStaleAsync(
         SqliteConnection connection,
         SqliteTransaction transaction,
@@ -391,10 +579,10 @@ public sealed partial class SqliteAssetIndex
             command.Transaction = transaction;
             command.CommandText = """
                 INSERT INTO duplicate_group_members(run_id, group_id, ordinal, asset_id, asset_name,
-                    asset_type, relative_path, asset_folder_path, completeness, file_count,
+                    asset_type, relative_path, asset_folder_path, json_path, completeness, file_count,
                     total_size_bytes, hash_status)
                 VALUES($runId, $groupId, $ordinal, $assetId, $name, $type, $relativePath,
-                    $folder, $completeness, $fileCount, $totalSize, $hashStatus);
+                    $folder, $jsonPath, $completeness, $fileCount, $totalSize, $hashStatus);
                 """;
             Add(command, "$runId", runId);
             Add(command, "$groupId", group.GroupId);
@@ -404,6 +592,7 @@ public sealed partial class SqliteAssetIndex
             Add(command, "$type", member.AssetType);
             Add(command, "$relativePath", member.RelativePath);
             Add(command, "$folder", member.AssetFolderPath);
+            Add(command, "$jsonPath", member.JsonPath);
             Add(command, "$completeness", (int)member.Completeness);
             Add(command, "$fileCount", member.FileCount);
             Add(command, "$totalSize", member.TotalSizeBytes);
@@ -498,7 +687,7 @@ public sealed partial class SqliteAssetIndex
     {
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT asset_id, asset_name, asset_type, relative_path, asset_folder_path,
+            SELECT asset_id, asset_name, asset_type, relative_path, asset_folder_path, json_path,
                    completeness, file_count, total_size_bytes, hash_status
             FROM duplicate_group_members
             WHERE run_id = $runId AND group_id = $groupId
@@ -511,8 +700,8 @@ public sealed partial class SqliteAssetIndex
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
             members.Add(new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3),
-                reader.GetString(4), (AssetCompletenessStatus)reader.GetInt32(5), reader.GetInt32(6), reader.GetInt64(7),
-                (DuplicateHashStatus)reader.GetInt32(8)));
+                reader.GetString(4), reader.GetString(5), (AssetCompletenessStatus)reader.GetInt32(6), reader.GetInt32(7),
+                reader.GetInt64(8), (DuplicateHashStatus)reader.GetInt32(9)));
         }
 
         return members;

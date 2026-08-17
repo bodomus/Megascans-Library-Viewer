@@ -253,5 +253,6 @@ public sealed class MainWindowTests
         public void CopyText(string text) { }
 
         public void OpenFolder(string folderPath) { }
+        public void OpenFile(string filePath) { }
     }
 }

@@ -159,7 +159,7 @@ public sealed class DuplicateAnalysisViewModel : ObservableObject, IDisposable
 
     private void OpenAsset()
     {
-        if (SelectedMember is not null) interactions.OpenFolder(SelectedMember.AssetFolderPath);
+        if (SelectedMember is not null) interactions.OpenFile(SelectedMember.JsonPath);
     }
 
     private void OpenFolder()
@@ -206,7 +206,7 @@ public sealed class DuplicateAnalysisViewModel : ObservableObject, IDisposable
     private AssetSummary? ResolveAsset(DuplicateMemberViewModel member) =>
         currentAssets.FirstOrDefault(asset =>
             StringComparer.OrdinalIgnoreCase.Equals(asset.Id, member.AssetId) &&
-            StringComparer.OrdinalIgnoreCase.Equals(asset.AssetFolderPath, member.AssetFolderPath));
+            StringComparer.OrdinalIgnoreCase.Equals(asset.JsonPath, member.JsonPath));
 
     private void RefreshGroups()
     {
@@ -302,6 +302,7 @@ public sealed class DuplicateMemberViewModel(DuplicateGroupMember member)
     public string AssetId => member.AssetId;
     public string RelativePath => member.RelativePath;
     public string AssetFolderPath => member.AssetFolderPath;
+    public string JsonPath => member.JsonPath;
     public AssetCompletenessStatus Completeness => member.Completeness;
     public int FileCount => member.FileCount;
     public string TotalSize => DuplicateAnalysisViewModelFormat.FormatBytes(member.TotalSizeBytes);

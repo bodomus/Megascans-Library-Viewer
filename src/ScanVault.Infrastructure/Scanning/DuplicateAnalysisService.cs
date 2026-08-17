@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Globalization;
-using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
 using ScanVault.Core.Abstractions;
 using ScanVault.Core.Models;
@@ -10,6 +9,7 @@ namespace ScanVault.Infrastructure.Scanning;
 
 public sealed class DuplicateAnalysisService(
     IAssetIndex index,
+    IDuplicateContentHasher hasher,
     ILogger<DuplicateAnalysisService> logger) : IDuplicateAnalysisService
 {
     private const string HashAlgorithm = "SHA-256";
@@ -27,7 +27,7 @@ public sealed class DuplicateAnalysisService(
         var stopwatch = Stopwatch.StartNew();
         var libraryRoot = PathPolicy.Normalize(settings.LibraryRoot);
         progress?.Report(new(DuplicateAnalysisPhase.LoadingAssets, 0, 0, 0, 0, 0, libraryRoot));
-        var assets = await index.GetAssetsAsync(cancellationToken).ConfigureAwait(false);
+        var assets = await index.GetDuplicateAnalysisSourcesAsync(libraryRoot, cancellationToken).ConfigureAwait(false);
         var run = await index.BeginDuplicateAnalysisRunAsync(libraryRoot, assets.Count, cancellationToken).ConfigureAwait(false);
 
         try
@@ -116,14 +116,7 @@ public sealed class DuplicateAnalysisService(
 
         try
         {
-            await using var stream = new FileStream(
-                file.FullPath,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.ReadWrite | FileShare.Delete,
-                1024 * 128,
-                FileOptions.Asynchronous | FileOptions.SequentialScan);
-            var hash = Convert.ToHexString(await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false));
+            var hash = await hasher.ComputeHashAsync(file.FullPath, cancellationToken).ConfigureAwait(false);
             await index.UpsertFileHashAsync(
                 new(file.FullPath, file.SizeBytes, file.LastWriteTimeUtc, HashAlgorithm, HashAlgorithmVersion, hash, DateTimeOffset.UtcNow),
                 cancellationToken).ConfigureAwait(false);

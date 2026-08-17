@@ -69,6 +69,7 @@ public sealed class DiagnosticsViewModelTests
         public void CopyText(string text) => CopiedText = text;
 
         public void OpenFolder(string folderPath) { }
+        public void OpenFile(string filePath) { }
     }
 
     private sealed class ThrowingInteractions : IAssetInteractionService
@@ -76,5 +77,6 @@ public sealed class DiagnosticsViewModelTests
         public void CopyText(string text) => throw new InvalidOperationException("Clipboard unavailable.");
 
         public void OpenFolder(string folderPath) { }
+        public void OpenFile(string filePath) { }
     }
 }

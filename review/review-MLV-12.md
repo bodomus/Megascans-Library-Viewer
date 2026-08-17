@@ -25,4 +25,22 @@ Implemented Duplicate Detection as a read-only analysis flow.
 ## Notes
 
 - The feature does not delete, move, or modify Megascans source files.
-- Exact duplicate behavior works for assets present in the current index. Because the legacy scan path still drops skipped same-ID copies from the main indexed asset list, full conflicting-content analysis for those skipped copies remains limited until duplicate copies are indexed separately.
+- Review follow-up fixed skipped same-ID copy analysis by adding dedicated persisted duplicate-analysis sources outside the normal browsing `assets` table.
+
+## Review Findings Follow-up - 2026-08-17
+
+- Persisted all parsed physical asset copies for duplicate analysis in schema v6 table `duplicate_analysis_sources`; normal browsing still keeps the deterministic same-ID winner only.
+- Made duplicate analysis read those persisted source candidates, so exact and conflicting same-ID groups include both physical copies after a real scan commit path.
+- Added `json_path` to duplicate group members and used it for UI open/compare identity.
+- Blocked exact classification when any required hash is missing, failed, empty, or not required; `Computed` and `CacheHit` remain valid exact evidence.
+- Split `Open asset` from `Open folder`: asset selects the metadata JSON file, folder opens the asset directory.
+- Added cancellation and failed-run regressions proving previous completed results remain current, partial groups are not persisted for non-completed runs, source files are untouched, and a later successful run becomes latest.
+
+## Follow-up Validation
+
+- `dotnet restore ScanVault.sln -v:minimal`: passed with approved execution outside sandbox; all projects up-to-date.
+- `dotnet build ScanVault.sln --configuration Release --no-restore -m:1 -v:minimal`: passed.
+- `dotnet test ScanVault.sln --configuration Release --no-build -m:1 -v:minimal`: passed.
+- `git diff --check`: passed, with CRLF conversion warnings only.
+- CRG update: passed.
+- Graphify update: failed with `[WinError 5] Access is denied`.

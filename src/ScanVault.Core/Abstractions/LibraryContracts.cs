@@ -34,6 +34,8 @@ public interface IAssetIndex
     Task<IReadOnlyList<ScanRunSummary>> GetScanRunsAsync(int limit, CancellationToken cancellationToken);
     Task<IReadOnlyList<ScanChangeSummary>> GetScanChangesAsync(string scanRunId, AssetChangeKind kind, int limit, CancellationToken cancellationToken);
     Task<IndexUpdateResult> ReplaceLibraryAsync(string libraryRoot, IReadOnlyList<AssetSummary> assets, ScanResult draftResult, string scanRunId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<AssetSummary>> GetDuplicateAnalysisSourcesAsync(string libraryRoot, CancellationToken cancellationToken) =>
+        GetAssetsAsync(cancellationToken);
     Task<DuplicateAnalysisRun> BeginDuplicateAnalysisRunAsync(string libraryRoot, int totalAssets, CancellationToken cancellationToken) =>
         throw new NotSupportedException("Duplicate analysis persistence is not available for this index implementation.");
     Task FinishDuplicateAnalysisRunAsync(string runId, DuplicateAnalysisStatus status, string? errorMessage, CancellationToken cancellationToken) =>

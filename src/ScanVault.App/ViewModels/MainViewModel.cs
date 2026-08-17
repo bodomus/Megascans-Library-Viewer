@@ -968,11 +968,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public async Task<DuplicateAnalysisViewModel> CreateDuplicateAnalysisViewModelAsync(CancellationToken cancellationToken)
     {
+        var duplicateSources = await index.GetDuplicateAnalysisSourcesAsync(Settings.LibraryRoot, cancellationToken);
         var viewModel = new DuplicateAnalysisViewModel(
             duplicateAnalysisService,
             index,
             Settings.Current,
-            allAssets.ToArray(),
+            duplicateSources.Count == 0 ? allAssets.ToArray() : duplicateSources.ToArray(),
             interactions,
             OpenComparisonPair,
             duplicateAnalysisLogger);

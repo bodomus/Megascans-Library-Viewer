@@ -71,12 +71,7 @@ public sealed partial class SqliteAssetIndex
                 return NewerCompatibility(schemaVersion, null);
             }
 
-            if (!await HasRequiredTablesAsync(connection, cancellationToken).ConfigureAwait(false))
-            {
-                return CorruptedCompatibility("Required index tables are missing.");
-            }
-
-            if (schemaVersion is 1 or 2 or 3 or 4)
+            if (schemaVersion is 1 or 2 or 3 or 4 or 5)
             {
                 return new(
                     IndexCompatibilityState.RequiresMigration,
@@ -86,6 +81,11 @@ public sealed partial class SqliteAssetIndex
                     CanWrite: false,
                     RequiresRescan: false,
                     "A supported schema migration is required before the index can be read.");
+            }
+
+            if (!await HasRequiredTablesAsync(connection, cancellationToken).ConfigureAwait(false))
+            {
+                return CorruptedCompatibility("Required index tables are missing.");
             }
 
             if (schemaVersion != CurrentSchemaVersion)
@@ -106,7 +106,7 @@ public sealed partial class SqliteAssetIndex
                 }
             }
 
-            foreach (var duplicateTable in new[] { "file_hash_cache", "duplicate_analysis_runs", "duplicate_groups", "duplicate_group_members", "duplicate_reasons" })
+            foreach (var duplicateTable in new[] { "file_hash_cache", "duplicate_analysis_runs", "duplicate_groups", "duplicate_group_members", "duplicate_reasons", "duplicate_analysis_sources" })
             {
                 if (!await TableExistsAsync(connection, duplicateTable, cancellationToken).ConfigureAwait(false))
                 {
@@ -239,6 +239,11 @@ public sealed partial class SqliteAssetIndex
         if (fromVersion == 4)
         {
             await MigrateVersionFourAsync(connection, cancellationToken).ConfigureAwait(false);
+            fromVersion = 5;
+        }
+        if (fromVersion == 5)
+        {
+            await MigrateVersionFiveAsync(connection, cancellationToken).ConfigureAwait(false);
         }
         InfrastructureLog.IndexMigrationCompleted(logger, resolvedPaths.DatabasePath, CurrentSchemaVersion);
     }

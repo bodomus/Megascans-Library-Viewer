@@ -82,6 +82,7 @@ public sealed record DuplicateGroupMember(
     string AssetType,
     string RelativePath,
     string AssetFolderPath,
+    string JsonPath,
     AssetCompletenessStatus Completeness,
     int FileCount,
     long TotalSizeBytes,

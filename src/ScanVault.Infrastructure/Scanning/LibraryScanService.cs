@@ -68,25 +68,34 @@ public sealed class LibraryScanService(
                         string.Join("; ", duplicate.SkippedCopyJsonPaths));
             }
 
-            var assets = resolution.Assets.ToArray();
+            var allAssets = parsedAssets
+                .OrderBy(static asset => asset.JsonPath, PathPolicy.Comparer)
+                .ToArray();
+            var winnerJsonPaths = resolution.Assets
+                .Select(static asset => asset.JsonPath)
+                .ToHashSet(PathPolicy.Comparer);
             var inventoryInaccessible = new ConcurrentBag<string>();
-            if (inventoryService is not null && assets.Length > 0)
+            if (inventoryService is not null && allAssets.Length > 0)
             {
-                InfrastructureLog.InventoryStarted(logger, assets.Length);
+                InfrastructureLog.InventoryStarted(logger, allAssets.Length);
                 var inventoried = 0;
                 await Parallel.ForEachAsync(
-                    Enumerable.Range(0, assets.Length),
+                    Enumerable.Range(0, allAssets.Length),
                     new ParallelOptions { MaxDegreeOfParallelism = InventoryConcurrency, CancellationToken = cancellationToken },
                     async (indexValue, token) =>
                     {
-                        var result = await inventoryService.InventoryAsync(assets[indexValue], token).ConfigureAwait(false);
-                        assets[indexValue] = assets[indexValue] with { Content = result.Inventory };
+                        var result = await inventoryService.InventoryAsync(allAssets[indexValue], token).ConfigureAwait(false);
+                        allAssets[indexValue] = allAssets[indexValue] with { Content = result.Inventory };
                         foreach (var directory in result.InaccessibleDirectories) inventoryInaccessible.Add(directory);
                         var current = Interlocked.Increment(ref inventoried);
-                        progress?.Report(new(ScanPhase.Inventory, assets.Length, current, assets[indexValue].AssetFolderPath));
+                        progress?.Report(new(ScanPhase.Inventory, allAssets.Length, current, allAssets[indexValue].AssetFolderPath));
                     }).ConfigureAwait(false);
             }
 
+            var assets = allAssets
+                .Where(asset => winnerJsonPaths.Contains(asset.JsonPath))
+                .OrderBy(static asset => asset.JsonPath, PathPolicy.Comparer)
+                .ToArray();
             foreach (var asset in assets)
             {
                 foreach (var issue in asset.Content.Issues.Where(static issue =>
@@ -107,11 +116,12 @@ public sealed class LibraryScanService(
                 0, 0, 0, assets.Length, malformedPaths.Count, unrelated, malformedPaths,
                 allInaccessible, resolution.DuplicateGroups, stopwatch.Elapsed)
             {
-                AssetsInventoried = inventoryService is null ? 0 : assets.Length,
-                MeshFilesFound = assets.Sum(static asset => asset.Content.MeshCount),
-                TextureFilesFound = assets.Sum(static asset => asset.Content.TextureCount),
-                AmbiguousAssets = assets.Count(static asset => asset.Content.Completeness == AssetCompletenessStatus.Ambiguous),
-                AssetsMissingCriticalFiles = assets.Count(static asset => asset.Content.Completeness == AssetCompletenessStatus.MissingCriticalFiles)
+                DuplicateAnalysisSources = allAssets,
+                AssetsInventoried = inventoryService is null ? 0 : allAssets.Length,
+                MeshFilesFound = allAssets.Sum(static asset => asset.Content.MeshCount),
+                TextureFilesFound = allAssets.Sum(static asset => asset.Content.TextureCount),
+                AmbiguousAssets = allAssets.Count(static asset => asset.Content.Completeness == AssetCompletenessStatus.Ambiguous),
+                AssetsMissingCriticalFiles = allAssets.Count(static asset => asset.Content.Completeness == AssetCompletenessStatus.MissingCriticalFiles)
             };
 
             if (inventoryService is not null)

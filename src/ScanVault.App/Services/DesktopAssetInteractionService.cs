@@ -24,4 +24,21 @@ public sealed class DesktopAssetInteractionService : IAssetInteractionService
         _ = Process.Start(startInfo)
             ?? throw new InvalidOperationException("Windows Explorer could not be started.");
     }
+
+    public void OpenFile(string filePath)
+    {
+        if (!File.Exists(filePath))
+        {
+            throw new FileNotFoundException($"Asset metadata file does not exist: {filePath}", filePath);
+        }
+
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "explorer.exe",
+            UseShellExecute = true,
+            Arguments = $"/select,\"{filePath}\""
+        };
+        _ = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("Windows Explorer could not be started.");
+    }
 }

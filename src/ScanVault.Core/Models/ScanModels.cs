@@ -39,6 +39,7 @@ public sealed record ScanResult(
     IReadOnlyList<DuplicateAssetGroup> DuplicateGroups,
     TimeSpan Elapsed)
 {
+    public IReadOnlyList<AssetSummary> DuplicateAnalysisSources { get; init; } = [];
     public int AssetsInventoried { get; init; }
     public int MeshFilesFound { get; init; }
     public int TextureFilesFound { get; init; }

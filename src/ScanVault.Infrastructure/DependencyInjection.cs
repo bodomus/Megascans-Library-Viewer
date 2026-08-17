@@ -27,6 +27,7 @@ public static class DependencyInjection
         services.AddSingleton<IReportWriter, MarkdownReportWriter>();
         services.AddSingleton<IReportExportService, ReportExportService>();
         services.AddSingleton<ILibraryScanService, LibraryScanService>();
+        services.AddSingleton<IDuplicateContentHasher, Sha256DuplicateContentHasher>();
         services.AddSingleton<IDuplicateAnalysisService, DuplicateAnalysisService>();
         return services;
     }

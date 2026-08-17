@@ -249,6 +249,62 @@ public sealed class ViewModelTests : IDisposable
         Assert.NotNull(requested);
         requested.Dispose();
     }
+
+    [Fact]
+    public async Task DuplicateAnalysisOpenAssetAndFolderUseDistinctTargets()
+    {
+        var folder = Path.Combine(root, "DuplicateA");
+        Directory.CreateDirectory(folder);
+        var asset = CreateAsset("same", "Stone", folder, "rock");
+        var result = DuplicateResult([DuplicateGroup(asset)]);
+        var interactions = new RecordingInteractions();
+        using var viewModel = new DuplicateAnalysisViewModel(
+            new NoOpDuplicateAnalysisService(),
+            new MemoryIndex([asset], latestDuplicateAnalysis: result),
+            new(root),
+            [asset],
+            interactions,
+            static (_, _) => { },
+            NullLogger<DuplicateAnalysisViewModel>.Instance);
+        await viewModel.LoadAsync(CancellationToken.None);
+
+        viewModel.OpenAssetCommand.Execute(null);
+        viewModel.OpenFolderCommand.Execute(null);
+
+        Assert.Equal(asset.JsonPath, interactions.OpenedFile);
+        Assert.Equal(asset.AssetFolderPath, interactions.OpenedFolder);
+    }
+
+    [Fact]
+    public async Task DuplicateAnalysisCompareResolvesSameIdMembersByJsonPath()
+    {
+        var left = CreateAsset("same", "Stone A", Path.Combine(root, "A"), "rock");
+        var right = CreateAsset("SAME", "Stone B", Path.Combine(root, "B"), "rock");
+        Directory.CreateDirectory(left.AssetFolderPath);
+        Directory.CreateDirectory(right.AssetFolderPath);
+        var result = DuplicateResult([DuplicateGroup(left, right)]);
+        AssetSummary? comparedLeft = null;
+        AssetSummary? comparedRight = null;
+        using var viewModel = new DuplicateAnalysisViewModel(
+            new NoOpDuplicateAnalysisService(),
+            new MemoryIndex([left, right], latestDuplicateAnalysis: result),
+            new(root),
+            [left, right],
+            new RecordingInteractions(),
+            (first, second) =>
+            {
+                comparedLeft = first;
+                comparedRight = second;
+            },
+            NullLogger<DuplicateAnalysisViewModel>.Instance);
+        await viewModel.LoadAsync(CancellationToken.None);
+
+        viewModel.CompareSelectedPairCommand.Execute(null);
+
+        Assert.Same(left, comparedLeft);
+        Assert.Same(right, comparedRight);
+    }
+
     public void Dispose() => Directory.Delete(root, recursive: true);
 
     private static MainViewModel CreateMainViewModel(
@@ -257,7 +313,7 @@ public sealed class ViewModelTests : IDisposable
         RecordingInteractions interactions,
         IndexCompatibilityInfo? compatibility = null)
     {
-        var index = new MemoryIndex(assets, compatibility);
+        var index = new MemoryIndex(assets, compatibility: compatibility);
         var buildInfo = ApplicationBuildInfo.Create(
             "9.8.7",
             "9.8.7-test+abcdef1",
@@ -327,6 +383,54 @@ public sealed class ViewModelTests : IDisposable
             [new AssetTag(AssetTagKind.Descriptive, tag)],
             DateTimeOffset.UnixEpoch);
 
+    private static DuplicateAnalysisResult DuplicateResult(IReadOnlyList<DuplicateGroupResult> groups)
+    {
+        var run = new DuplicateAnalysisRun(
+            "duplicate-run",
+            "library",
+            "library",
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow,
+            DuplicateAnalysisStatus.Completed,
+            false,
+            groups.SelectMany(static group => group.Members).Count(),
+            groups.SelectMany(static group => group.Members).Count(),
+            0,
+            0,
+            0,
+            TimeSpan.Zero,
+            null,
+            new(
+                groups.Count(static group => group.Category is DuplicateCategory.ExactIdDuplicate or DuplicateCategory.ExactContentDuplicate),
+                groups.Count(static group => group.Category == DuplicateCategory.ConflictingIdDuplicate),
+                groups.Count(static group => group.Category == DuplicateCategory.ProbableDuplicate),
+                groups.Count(static group => group.Category == DuplicateCategory.PartialDuplicate),
+                groups.SelectMany(static group => group.Members).Count(),
+                groups.Sum(static group => group.EstimatedDuplicateSizeBytes)));
+        return new(run, groups);
+    }
+
+    private static DuplicateGroupResult DuplicateGroup(params AssetSummary[] assets) =>
+        new(
+            "group",
+            DuplicateCategory.ExactIdDuplicate,
+            DuplicateConfidence.Exact,
+            [new("Asset ID", "Same normalized Asset ID.")],
+            ["Asset ID"],
+            [],
+            0,
+            assets.Select(static asset => new DuplicateGroupMember(
+                asset.Id,
+                asset.Name,
+                asset.AssetType,
+                asset.AssetFolderPath,
+                asset.AssetFolderPath,
+                asset.JsonPath,
+                asset.Content.Completeness,
+                0,
+                0,
+                DuplicateHashStatus.NotRequired)).ToArray());
+
     private sealed class MemorySmartCollectionStore : ISmartCollectionStore
     {
         public IReadOnlyList<SmartCollectionRecord> Value { get; private set; } = [];
@@ -357,6 +461,7 @@ public sealed class ViewModelTests : IDisposable
 
     private sealed class MemoryIndex(
         IReadOnlyList<AssetSummary> assets,
+        DuplicateAnalysisResult? latestDuplicateAnalysis = null,
         IndexCompatibilityInfo? compatibility = null) : IAssetIndex
     {
         public IndexCompatibilityInfo Compatibility { get; } = compatibility ?? new(
@@ -373,6 +478,17 @@ public sealed class ViewModelTests : IDisposable
         public Task<IReadOnlyList<AssetSummary>> GetAssetsAsync(
             CancellationToken cancellationToken) =>
             Task.FromResult(assets);
+
+        public Task<IReadOnlyList<AssetSummary>> GetDuplicateAnalysisSourcesAsync(
+            string libraryRoot,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(assets);
+
+        public Task<DuplicateAnalysisResult?> GetLatestDuplicateAnalysisAsync(
+            string libraryRoot,
+            bool includeStale,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(latestDuplicateAnalysis);
 
         public Task<string> BeginScanRunAsync(string libraryRoot, string applicationVersion, string commitSha, CancellationToken cancellationToken) =>
             Task.FromResult("scan-run");
@@ -451,9 +567,12 @@ public sealed class ViewModelTests : IDisposable
     private sealed class RecordingInteractions : IAssetInteractionService
     {
         public string? CopiedText { get; private set; }
+        public string? OpenedFolder { get; private set; }
+        public string? OpenedFile { get; private set; }
 
         public void CopyText(string text) => CopiedText = text;
 
-        public void OpenFolder(string folderPath) { }
+        public void OpenFolder(string folderPath) => OpenedFolder = folderPath;
+        public void OpenFile(string filePath) => OpenedFile = filePath;
     }
 }

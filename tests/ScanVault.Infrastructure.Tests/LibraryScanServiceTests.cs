@@ -53,6 +53,9 @@ public sealed class LibraryScanServiceTests
         Assert.Equal([Path.GetFullPath(skippedPath)], duplicate.SkippedCopyJsonPaths);
         var committed = Assert.Single(index.CommittedAssets);
         Assert.Equal(Path.GetFullPath(winnerPath), committed.JsonPath);
+        Assert.Equal(
+            [Path.GetFullPath(winnerPath), Path.GetFullPath(skippedPath)],
+            index.DuplicateAnalysisSources.Select(static asset => asset.JsonPath).Order(StringComparer.OrdinalIgnoreCase));
     }
 
     private static AssetSummary CreateAsset(string id, string jsonPath) =>
@@ -106,6 +109,7 @@ public sealed class LibraryScanServiceTests
             "Index is compatible.");
         public bool RequiresNormalizationRescan => Compatibility.RequiresRescan;
         public IReadOnlyList<AssetSummary> CommittedAssets { get; private set; } = [];
+        public IReadOnlyList<AssetSummary> DuplicateAnalysisSources { get; private set; } = [];
 
         public Task<IndexCompatibilityInfo> InspectCompatibilityAsync(CancellationToken cancellationToken) =>
             Task.FromResult(Compatibility);
@@ -136,6 +140,7 @@ public sealed class LibraryScanServiceTests
             CancellationToken cancellationToken)
         {
             CommittedAssets = assets;
+            DuplicateAnalysisSources = draftResult.DuplicateAnalysisSources;
             return Task.FromResult(update);
         }
     }

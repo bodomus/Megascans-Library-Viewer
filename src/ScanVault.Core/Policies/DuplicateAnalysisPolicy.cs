@@ -16,21 +16,26 @@ public static class DuplicateAnalysisPolicy
                      .OrderBy(static group => group.Key, StringComparer.OrdinalIgnoreCase))
         {
             var members = group.OrderBy(static asset => asset.LibraryRelativePath, StringComparer.OrdinalIgnoreCase).ToArray();
-            var sameContent = members.Select(ContentSignature).Distinct(StringComparer.Ordinal).Count() == 1;
+            var sameContent = members.All(HasExactHashEvidence) &&
+                members.Select(ContentSignature).Distinct(StringComparer.Ordinal).Count() == 1;
             groups.Add(CreateGroup(
                 sameContent ? DuplicateCategory.ExactIdDuplicate : DuplicateCategory.ConflictingIdDuplicate,
                 sameContent ? DuplicateConfidence.Exact : DuplicateConfidence.High,
                 members,
                 sameContent
                     ? [new("Asset ID", "Same normalized Asset ID and equivalent indexed file content.")]
-                    : [new("Asset ID", "Same normalized Asset ID but indexed file content differs.")],
+                    : [new("Asset ID", members.Any(HasIncompleteHashEvidence)
+                        ? "Same normalized Asset ID but incomplete or unavailable hash evidence prevents exact equality."
+                        : "Same normalized Asset ID but indexed file content differs.")],
                 ["Asset ID"],
-                sameContent ? [] : ["Content inventory", "File fingerprints"]));
+                sameContent ? [] : members.Any(HasIncompleteHashEvidence)
+                    ? ["Content inventory", "File fingerprints", "Hash availability"]
+                    : ["Content inventory", "File fingerprints"]));
             foreach (var member in members) used.Add(member.Asset.JsonPath);
         }
 
         foreach (var group in assets
-                     .Where(asset => asset.Files.Count > 0)
+                     .Where(HasExactHashEvidence)
                      .GroupBy(ContentSignature, StringComparer.Ordinal)
                      .Where(static group => group.Count() > 1)
                      .OrderBy(static group => group.Key, StringComparer.Ordinal))
@@ -109,6 +114,7 @@ public static class DuplicateAnalysisPolicy
                 asset.Asset.AssetType,
                 asset.LibraryRelativePath,
                 asset.Asset.AssetFolderPath,
+                asset.Asset.JsonPath,
                 asset.Asset.Content.Completeness,
                 asset.FileCount,
                 asset.TotalSizeBytes,
@@ -129,6 +135,16 @@ public static class DuplicateAnalysisPolicy
             .OrderBy(static file => file.ContentHash, StringComparer.Ordinal)
             .ThenBy(static file => file.SizeBytes)
             .Select(static file => $"{file.ContentHash}:{file.SizeBytes}"));
+
+    private static bool HasExactHashEvidence(DuplicateAssetFingerprint asset) =>
+        asset.Files.Count > 0 && asset.Files.All(static file =>
+            !string.IsNullOrWhiteSpace(file.ContentHash) &&
+            file.HashStatus is DuplicateHashStatus.Computed or DuplicateHashStatus.CacheHit);
+
+    private static bool HasIncompleteHashEvidence(DuplicateAssetFingerprint asset) =>
+        asset.Files.Count == 0 || asset.Files.Any(static file =>
+            string.IsNullOrWhiteSpace(file.ContentHash) ||
+            file.HashStatus is not (DuplicateHashStatus.Computed or DuplicateHashStatus.CacheHit));
 
     private static string MetadataSignature(DuplicateAssetFingerprint asset) =>
         string.Join("|", NormalizeName(asset.Asset.Name), asset.Asset.AssetType, asset.Asset.MaxResolution?.MaxDimension.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "", asset.Asset.Content.TextureSetCount, asset.Asset.Content.LodCount);
