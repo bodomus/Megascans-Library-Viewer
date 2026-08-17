@@ -26,7 +26,12 @@ public sealed class AsyncRelayCommand(
 
     public async void Execute(object? parameter)
     {
-        if (!CanExecute(parameter))
+        await ExecuteAsync(CancellationToken.None);
+    }
+
+    public async Task ExecuteAsync(CancellationToken cancellationToken)
+    {
+        if (!CanExecute(null))
         {
             return;
         }
@@ -35,7 +40,7 @@ public sealed class AsyncRelayCommand(
         NotifyCanExecuteChanged();
         try
         {
-            await execute(CancellationToken.None);
+            await execute(cancellationToken);
         }
         catch (OperationCanceledException)
         {

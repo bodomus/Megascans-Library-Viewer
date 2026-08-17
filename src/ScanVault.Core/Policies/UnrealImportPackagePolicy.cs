@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Globalization;
 using System.Text;
 using ScanVault.Core.Models;
 
@@ -18,7 +19,7 @@ public static class UnrealImportPackagePolicy
         var asset = request.Asset;
         var destination = UnrealImportDestinationPolicy.Create(request.DestinationBasePath, asset);
         var material = CreateMaterialSnapshot(request.Profile, destination.AssetBaseName);
-        var textures = SelectTextures(asset.Content).ToArray();
+        var textureSelection = SelectTextures(asset.Content);
         var mesh = CreateMesh(asset.Content);
         var options = request.Options with { CreateMaterialInstance = request.Profile.CreateMaterialInstance && request.Options.CreateMaterialInstance };
         var package = new UnrealImportPackage(
@@ -29,10 +30,10 @@ public static class UnrealImportPackagePolicy
             CreateReadinessSnapshot(asset.UnrealReadiness),
             destination,
             mesh,
-            textures,
+            textureSelection.SelectedTextures,
             material,
             options,
-            new([]));
+            new(textureSelection.Issues));
         package = package with { PackageId = ComputePackageId(package) };
         return package with { Validation = UnrealImportPackageValidationPolicy.Validate(package, sourceExists) };
     }
@@ -45,28 +46,62 @@ public static class UnrealImportPackagePolicy
         var builder = new StringBuilder();
         builder.Append("schema=").Append(package.SchemaVersion).Append('\n');
         builder.Append("assetId=").Append(package.Source.AssetId).Append('\n');
-        builder.Append("json=").Append(package.Source.JsonPath).Append('\n');
-        builder.Append("folder=").Append(package.Source.AssetFolderPath).Append('\n');
-        builder.Append("destination=").Append(package.Destination.ContentPath).Append('\n');
+        builder.Append("json=").Append(NormalizePath(package.Source.JsonPath)).Append('\n');
+        builder.Append("folder=").Append(NormalizePath(package.Source.AssetFolderPath)).Append('\n');
+        builder.Append("sourceLastWriteUtc=").Append(package.Source.LastWriteTimeUtc.UtcDateTime.ToString("O", CultureInfo.InvariantCulture)).Append('\n');
+        builder.Append("readiness=").Append(package.Readiness.Status).Append('|').Append(package.Readiness.RuleVersion.ToString(CultureInfo.InvariantCulture)).Append('\n');
+        builder.Append("destination=").Append(NormalizePath(package.Destination.ContentPath)).Append('\n');
+        builder.Append("assetBaseName=").Append(package.Destination.AssetBaseName).Append('\n');
         builder.Append("profile=").Append(package.Material.Id).Append('\n');
-        builder.Append("variant=").Append(package.Mesh?.PrimaryVariant ?? string.Empty).Append('\n');
-        builder.Append("options=").Append(package.Options.ImportLods).Append('|')
-            .Append(package.Options.EnableNanite).Append('|')
-            .Append(package.Options.CreateMaterialInstance).Append('|')
-            .Append(package.Options.ReadinessOverride).Append('\n');
-        foreach (var texture in package.Textures.OrderBy(static texture => UnrealImportSemanticRolePolicy.Order(texture.Role)).ThenBy(static texture => texture.SourcePath, Comparer))
+        builder.Append("masterMaterial=").Append(NormalizePath(package.Material.MasterMaterialPath ?? string.Empty)).Append('\n');
+        builder.Append("materialInstancePrefix=").Append(package.Material.MaterialInstancePrefix).Append('\n');
+        builder.Append("materialInstanceName=").Append(package.Material.MaterialInstanceName).Append('\n');
+        foreach (var mapping in package.Material.TextureParameterMappings
+                     .OrderBy(static mapping => UnrealImportSemanticRolePolicy.Order(mapping.Role))
+                     .ThenBy(static mapping => mapping.ParameterName, Comparer))
         {
-            builder.Append("texture=").Append(texture.Role).Append('|').Append(texture.MapType).Append('|').Append(texture.SourcePath).Append('\n');
+            builder.Append("mapping=").Append(mapping.Role).Append('|').Append(mapping.ParameterName).Append('\n');
         }
 
-        foreach (var lod in package.Mesh?.Lods ?? [])
+        builder.Append("variant=").Append(package.Mesh?.PrimaryVariant ?? string.Empty).Append('\n');
+        builder.Append("options=").Append(NormalizeBool(package.Options.ImportLods)).Append('|')
+            .Append(NormalizeBool(package.Options.EnableNanite)).Append('|')
+            .Append(NormalizeBool(package.Options.CreateMaterialInstance)).Append('|')
+            .Append(NormalizeBool(package.Options.ReadinessOverride)).Append('\n');
+        foreach (var texture in package.Textures
+                     .OrderBy(static texture => UnrealImportSemanticRolePolicy.Order(texture.Role))
+                     .ThenBy(static texture => texture.MapType)
+                     .ThenBy(static texture => texture.SourcePath, Comparer))
         {
-            builder.Append("lod=").Append(lod.Variant).Append('|').Append(lod.Lod).Append('|').Append(lod.Format).Append('|').Append(lod.SourcePath).Append('\n');
+            builder.Append("texture=").Append(texture.Role)
+                .Append('|').Append(texture.MapType)
+                .Append('|').Append(NormalizePath(texture.SourcePath))
+                .Append('|').Append(texture.SetKind)
+                .Append('|').Append(texture.Resolution?.ToString(CultureInfo.InvariantCulture) ?? string.Empty)
+                .Append('|').Append(texture.Format)
+                .Append('\n');
+        }
+
+        foreach (var lod in (package.Mesh?.Lods ?? [])
+                     .OrderBy(static lod => lod.Variant, Comparer)
+                     .ThenBy(static lod => lod.Lod)
+                     .ThenBy(static lod => lod.Format)
+                     .ThenBy(static lod => lod.SourcePath, Comparer))
+        {
+            builder.Append("lod=").Append(lod.Variant)
+                .Append('|').Append(lod.Lod.ToString(CultureInfo.InvariantCulture))
+                .Append('|').Append(lod.Format)
+                .Append('|').Append(NormalizePath(lod.SourcePath))
+                .Append('\n');
         }
 
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(builder.ToString()));
         return Convert.ToHexString(bytes).ToLowerInvariant()[..32];
     }
+
+    private static string NormalizePath(string path) => path.Replace('\\', '/');
+
+    private static string NormalizeBool(bool value) => value ? "true" : "false";
 
     private static UnrealImportReadinessSnapshot CreateReadinessSnapshot(UnrealReadinessEvaluation readiness) =>
         new(
@@ -119,33 +154,80 @@ public static class UnrealImportPackagePolicy
         return new(variant.Name, lods);
     }
 
-    private static IEnumerable<UnrealImportTexture> SelectTextures(AssetContentInventory content)
+    private static UnrealImportTextureSelectionResult SelectTextures(AssetContentInventory content)
     {
         var primary = AssetContentSelectionPolicy.SelectPrimaryTextureSet(
             content,
             [TextureSetKind.General, TextureSetKind.Unknown, TextureSetKind.Atlas, TextureSetKind.Billboard]);
         if (primary is null)
         {
-            yield break;
+            return new([], []);
         }
 
-        foreach (var component in primary.Components
-                     .OrderBy(static component => UnrealImportSemanticRolePolicy.Order(UnrealImportSemanticRolePolicy.Map(component.MapType)))
-                     .ThenByDescending(component => component.Resolution ?? primary.Resolution ?? 0)
-                     .ThenBy(static component => component.MapType)
-                     .ThenBy(static component => component.Path, Comparer)
-                     .GroupBy(static component => UnrealImportSemanticRolePolicy.Map(component.MapType))
-                     .Select(static group => group.First())
-                     .OrderBy(static component => UnrealImportSemanticRolePolicy.Order(UnrealImportSemanticRolePolicy.Map(component.MapType)))
-                     .ThenBy(static component => component.Path, Comparer))
+        var selected = new List<UnrealImportTexture>();
+        var issues = new List<UnrealImportPackageIssue>();
+        foreach (var group in primary.Components
+                     .Select(component => new TextureCandidate(
+                         UnrealImportSemanticRolePolicy.Map(component.MapType),
+                         component))
+                     .Where(static candidate => candidate.Role != UnrealImportSemanticRole.Other)
+                     .GroupBy(static candidate => candidate.Role)
+                     .OrderBy(static group => UnrealImportSemanticRolePolicy.Order(group.Key)))
         {
-            yield return new(
-                UnrealImportSemanticRolePolicy.Map(component.MapType),
+            var ordered = group
+                .OrderBy(static candidate => PreferredMapRank(candidate.Role, candidate.Component.MapType))
+                .ThenByDescending(candidate => candidate.Component.Resolution ?? primary.Resolution ?? 0)
+                .ThenBy(static candidate => candidate.Component.MapType)
+                .ThenBy(static candidate => candidate.Component.Format, Comparer)
+                .ThenBy(static candidate => candidate.Component.Path, Comparer)
+                .ToArray();
+            if (ordered.Length > 1)
+            {
+                issues.Add(new(
+                    UnrealImportPackageIssueCode.AmbiguousTextureRole,
+                    UnrealImportValidationSeverity.Warning,
+                    $"Multiple textures map to semantic role {group.Key}; deterministic priority selected {ordered[0].Component.MapType}.",
+                    ordered[0].Component.Path));
+            }
+
+            var component = ordered[0].Component;
+            selected.Add(new(
+                group.Key,
                 component.Path,
                 component.MapType,
                 primary.Kind,
                 component.Resolution ?? primary.Resolution,
-                component.Format);
+                component.Format));
         }
+
+        return new(selected
+            .OrderBy(static texture => UnrealImportSemanticRolePolicy.Order(texture.Role))
+            .ThenBy(static texture => texture.SourcePath, Comparer)
+            .ToArray(), issues
+            .OrderBy(static issue => issue.Code)
+            .ThenBy(static issue => issue.RelatedPath, Comparer)
+            .ThenBy(static issue => issue.Message, Comparer)
+            .ToArray());
     }
+
+    private static int PreferredMapRank(UnrealImportSemanticRole role, TextureMapType mapType) => role switch
+    {
+        UnrealImportSemanticRole.BaseColor => mapType == TextureMapType.Albedo ? 0 : 10,
+        UnrealImportSemanticRole.Normal => mapType == TextureMapType.Normal ? 0 :
+            mapType == TextureMapType.Bump ? 1 : 10,
+        UnrealImportSemanticRole.Roughness => mapType == TextureMapType.Roughness ? 0 :
+            mapType == TextureMapType.Gloss ? 1 : 10,
+        UnrealImportSemanticRole.AO => mapType == TextureMapType.AmbientOcclusion ? 0 :
+            mapType == TextureMapType.Cavity ? 1 : 10,
+        UnrealImportSemanticRole.Displacement => mapType == TextureMapType.Displacement ? 0 : 10,
+        UnrealImportSemanticRole.Opacity => mapType == TextureMapType.Opacity ? 0 : 10,
+        UnrealImportSemanticRole.Specular => mapType == TextureMapType.Specular ? 0 : 10,
+        UnrealImportSemanticRole.Translucency => mapType == TextureMapType.Translucency ? 0 : 10,
+        _ => 10
+    };
+
+    private sealed record TextureCandidate(UnrealImportSemanticRole Role, TextureComponentEntry Component);
+    private sealed record UnrealImportTextureSelectionResult(
+        IReadOnlyList<UnrealImportTexture> SelectedTextures,
+        IReadOnlyList<UnrealImportPackageIssue> Issues);
 }

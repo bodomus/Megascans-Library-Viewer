@@ -109,15 +109,100 @@ public sealed class UnrealImportPackageViewModelTests : IDisposable
         await viewModel.LoadAsync(CancellationToken.None);
 
         Assert.False(viewModel.SaveProfileCommand.CanExecute(null));
-        viewModel.DuplicateProfileCommand.Execute(null);
+        await viewModel.DuplicateProfileCommand.ExecuteAsync(CancellationToken.None);
         Assert.True(viewModel.SaveProfileCommand.CanExecute(null));
 
         viewModel.EditableProfileName = "Custom Surface";
-        viewModel.SaveProfileCommand.Execute(null);
+        await viewModel.SaveProfileCommand.ExecuteAsync(CancellationToken.None);
         Assert.Contains(store.Profiles, static profile => profile.Name == "Custom Surface");
 
-        viewModel.DeleteProfileCommand.Execute(null);
+        await viewModel.DeleteProfileCommand.ExecuteAsync(CancellationToken.None);
         Assert.Empty(store.Profiles);
+    }
+
+    // Unit test: New Profile creates a mutable unsaved user profile from the current asset type template.
+    [Fact]
+    public async Task NewProfileCreatesEditableProfileWithoutImmediatePersistence()
+    {
+        var store = new MemoryProfileStore();
+        var viewModel = CreateViewModel(CreateAsset("new-profile", "Surface"), profileStore: store);
+        await viewModel.LoadAsync(CancellationToken.None);
+
+        await viewModel.NewProfileCommand.ExecuteAsync(CancellationToken.None);
+
+        Assert.True(viewModel.IsEditableProfile);
+        Assert.StartsWith("New Surface Profile", viewModel.EditableProfileName, StringComparison.Ordinal);
+        Assert.Empty(store.Profiles);
+        Assert.Contains(viewModel.AssetTypeOptions, static option => option.AssetType == "Surface" && option.IsSelected);
+    }
+
+    // Unit test: profile asset types, parameter mappings, and default options are saved to the user profile store.
+    [Fact]
+    public async Task EditableProfileContractFieldsSaveToProfileStore()
+    {
+        var store = new MemoryProfileStore();
+        var viewModel = CreateViewModel(CreateAsset("contract", "Surface"), profileStore: store);
+        await viewModel.LoadAsync(CancellationToken.None);
+        await viewModel.NewProfileCommand.ExecuteAsync(CancellationToken.None);
+
+        viewModel.EditableProfileName = "Contract Profile";
+        viewModel.EditableProfileDescription = "Editable contract";
+        viewModel.AssetTypeOptions.Single(static option => option.AssetType == "Decal").IsSelected = true;
+        viewModel.ParameterMappings.Single(static row => row.Role == UnrealImportSemanticRole.Normal).ParameterName = "CustomNormal";
+        viewModel.EditableDefaultImportLods = false;
+        viewModel.EditableDefaultEnableNanite = true;
+        viewModel.EditableDefaultCreateMaterialInstance = false;
+        await viewModel.SaveProfileCommand.ExecuteAsync(CancellationToken.None);
+
+        var saved = Assert.Single(store.Profiles);
+        Assert.Equal("Contract Profile", saved.Name);
+        Assert.Equal("Editable contract", saved.Description);
+        Assert.Contains("Surface", saved.AssetTypes);
+        Assert.Contains("Decal", saved.AssetTypes);
+        Assert.Contains(saved.TextureParameterMappings, static mapping =>
+            mapping.Role == UnrealImportSemanticRole.Normal && mapping.ParameterName == "CustomNormal");
+        Assert.False(saved.DefaultOptions.ImportLods);
+        Assert.True(saved.DefaultOptions.EnableNanite);
+        Assert.False(saved.DefaultOptions.CreateMaterialInstance);
+    }
+
+    // Unit test: invalid profile edits block save and keep storage unchanged.
+    [Fact]
+    public async Task InvalidProfileEditBlocksSave()
+    {
+        var store = new MemoryProfileStore();
+        var viewModel = CreateViewModel(CreateAsset("invalid-profile", "Surface"), profileStore: store);
+        await viewModel.LoadAsync(CancellationToken.None);
+        await viewModel.NewProfileCommand.ExecuteAsync(CancellationToken.None);
+        viewModel.EditableProfileName = " ";
+        foreach (var option in viewModel.AssetTypeOptions)
+        {
+            option.IsSelected = false;
+        }
+
+        await viewModel.SaveProfileCommand.ExecuteAsync(CancellationToken.None);
+
+        Assert.Empty(store.Profiles);
+        Assert.Contains("Profile name is required", viewModel.StatusText, StringComparison.Ordinal);
+    }
+
+    // Unit test: unsaved material contract edits refresh the preview and PackageId immediately.
+    [Fact]
+    public async Task UnsavedMaterialContractEditsRefreshPackageId()
+    {
+        var viewModel = CreateViewModel(CreateAsset("identity-refresh", "Surface"));
+        await viewModel.LoadAsync(CancellationToken.None);
+        await viewModel.NewProfileCommand.ExecuteAsync(CancellationToken.None);
+        var original = viewModel.PackageId;
+
+        viewModel.EditableMasterMaterialPath = "/Game/Materials/M_Changed";
+        var afterMaster = viewModel.PackageId;
+        viewModel.ParameterMappings.Single(static row => row.Role == UnrealImportSemanticRole.Normal).ParameterName = "ChangedNormal";
+
+        Assert.NotEqual(original, afterMaster);
+        Assert.NotEqual(afterMaster, viewModel.PackageId);
+        Assert.Contains(viewModel.Package.Material.TextureParameterMappings, static mapping =>
+            mapping.Role == UnrealImportSemanticRole.Normal && mapping.ParameterName == "ChangedNormal");
     }
 
     public void Dispose()

@@ -13,19 +13,22 @@
 - Added WPF flow from selected asset and asset context menu into a dedicated package preview/export window.
 - Added copy manifest support using the same serializer service used for export.
 - Added user-facing technical documentation in `Docs/unreal-import-package.md`.
+- Addressed review findings by expanding package identity to include material contract fields, selected texture/LOD semantics, and indexed source revision.
+- Moved ambiguous texture-role detection before deterministic candidate collapse and preserved those warnings through export validation.
+- Completed the material profile editor for user profiles: new profile creation, compatible asset types, editable mappings, editable default options, validation, and persistence tests.
 
-## Validation Run So Far
+## Validation
 
 - `dotnet restore ScanVault.sln -v:minimal` passed after sandbox escalation.
-- `dotnet build ScanVault.sln --configuration Release -m:1 -v:minimal` passed.
+- `dotnet build ScanVault.sln --configuration Release --no-restore -m:1 -v:minimal` passed.
 - `dotnet test ScanVault.sln --configuration Release --no-build -m:1 -v:minimal` passed:
-  - Core: 84 tests
-  - Infrastructure: 61 tests
-  - App: 37 tests
+  - Core: 90 tests
+  - Infrastructure: 65 tests
+  - App: 41 tests
 - `dotnet format ScanVault.sln --verify-no-changes --no-restore` passed after sandbox escalation for build-host named pipe access.
 - `git diff --check` passed. Git reported line-ending normalization warnings only.
 - `code-review-graph update --brief` passed after implementation.
-- `code-review-graph detect-changes --base HEAD --brief` passed; CRG reported UI-oriented test gaps around WPF window handlers and view-model wiring.
+- `code-review-graph detect-changes --base HEAD --brief` passed; CRG reported remaining gaps around small UI/command wrapper surfaces.
 - `graphify update` was attempted and failed with `[WinError 5] Access is denied`.
 
 ## Boundaries
@@ -38,6 +41,6 @@
 ## Known Limitations
 
 - Built-in Master Material paths are editable templates. ScanVault validates only `/Game/...` syntax, not asset existence.
-- The UI profile editor is intentionally simple: duplicate a built-in profile, edit name/Master Material path/MI prefix, save or delete the user profile.
+- Built-in profiles are intentionally immutable in the UI; user profiles can be created, edited, saved, and deleted.
 - Manual WPF smoke testing was not performed in this automated run.
 - GitHub Actions was not verified because no push was requested/performed.

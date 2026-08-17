@@ -30,6 +30,54 @@ public sealed class UnrealImportPackageInfrastructureTests
         Assert.False(actual.IsBuiltIn);
     }
 
+    // Integration test: all editable material profile fields survive a profile store restart.
+    [Fact]
+    public async Task EditableMaterialProfileFieldsRoundTrip()
+    {
+        using var temporary = new TemporaryDirectory();
+        var paths = Paths(temporary);
+        var store = new JsonUnrealMaterialProfileStore(paths);
+        var profile = new UnrealMaterialProfile(
+            "user-full",
+            "Full User Profile",
+            "Round-trip profile",
+            ["Surface", "Decal"],
+            "/Game/Materials/M_Custom",
+            true,
+            "CustomMI_",
+            [
+                new(UnrealImportSemanticRole.BaseColor, "MyBaseColor"),
+                new(UnrealImportSemanticRole.Normal, "MyNormal")
+            ],
+            new(ImportLods: false, EnableNanite: true, CreateMaterialInstance: false, ReadinessOverride: false),
+            IsBuiltIn: false);
+
+        await store.SaveUserProfilesAsync([profile, UnrealMaterialProfilePolicy.BuiltInProfiles[0]], CancellationToken.None);
+        var loaded = await new JsonUnrealMaterialProfileStore(paths).LoadUserProfilesAsync(CancellationToken.None);
+
+        var actual = Assert.Single(loaded);
+        Assert.Equal(profile.Name, actual.Name);
+        Assert.Equal(profile.Description, actual.Description);
+        Assert.Equal(profile.AssetTypes, actual.AssetTypes);
+        Assert.Equal(profile.MasterMaterialPath, actual.MasterMaterialPath);
+        Assert.Equal(profile.MaterialInstancePrefix, actual.MaterialInstancePrefix);
+        Assert.Equal(profile.TextureParameterMappings, actual.TextureParameterMappings);
+        Assert.Equal(profile.DefaultOptions, actual.DefaultOptions);
+    }
+
+    // Integration test: built-in profiles are never persisted as mutable user definitions.
+    [Fact]
+    public async Task BuiltInProfilesAreNotPersistedAsUserDefinitions()
+    {
+        using var temporary = new TemporaryDirectory();
+        var store = new JsonUnrealMaterialProfileStore(Paths(temporary));
+
+        await store.SaveUserProfilesAsync(UnrealMaterialProfilePolicy.BuiltInProfiles, CancellationToken.None);
+        var loaded = await store.LoadUserProfilesAsync(CancellationToken.None);
+
+        Assert.Empty(loaded);
+    }
+
     // Integration test: malformed profile storage is backed up and fails safely.
     [Fact]
     public async Task MalformedProfileStorageReturnsEmptyAndCreatesBackup()
@@ -100,18 +148,59 @@ public sealed class UnrealImportPackageInfrastructureTests
         Assert.False(File.Exists(destination));
     }
 
-    private static UnrealImportPackage CreatePackage(TemporaryDirectory temporary, string name)
+    // Integration test: exported validation preserves generation-time ambiguity warnings.
+    [Fact]
+    public async Task ExportedValidationPreservesAmbiguousTextureWarning()
+    {
+        using var temporary = new TemporaryDirectory();
+        var package = CreatePackage(
+            temporary,
+            "Ambiguous",
+            "asset_4K_Albedo.jpg",
+            "asset_4K_Albedo.png",
+            "asset_4K_Normal.jpg",
+            "asset_4K_Roughness.jpg");
+        var destination = Path.Combine(temporary.Path, "ambiguous.scanvault-ue.json");
+
+        await new UnrealImportPackageExportService().ExportAsync(package, destination, CancellationToken.None);
+        using var document = JsonDocument.Parse(await File.ReadAllTextAsync(destination));
+        var issues = document.RootElement.GetProperty("validation").GetProperty("issues");
+
+        Assert.Contains(issues.EnumerateArray(), issue =>
+            issue.GetProperty("code").GetString() == "ambiguousTextureRole");
+    }
+
+    // Integration test: finalization failure leaves no temporary manifest file behind.
+    [Fact]
+    public async Task FinalizationFailureRemovesTemporaryManifest()
+    {
+        using var temporary = new TemporaryDirectory();
+        var package = CreatePackage(temporary, "Failure");
+        var destination = temporary.CreateDirectory("occupied.scanvault-ue.json");
+
+        var exception = await Record.ExceptionAsync(() =>
+            new UnrealImportPackageExportService().ExportAsync(package, destination, CancellationToken.None));
+
+        Assert.True(exception is IOException or UnauthorizedAccessException, exception?.ToString());
+        Assert.Empty(Directory.GetFiles(temporary.Path, "*.tmp"));
+        Assert.True(Directory.Exists(destination));
+    }
+
+    private static UnrealImportPackage CreatePackage(
+        TemporaryDirectory temporary,
+        string name,
+        params string[] textureFiles)
     {
         var folder = temporary.CreateDirectory("library", UnrealImportNamePolicy.SanitizeSegment(name));
         var jsonPath = temporary.WriteFile(Path.Combine("library", UnrealImportNamePolicy.SanitizeSegment(name), "asset.json"), "{}");
-        var albedo = temporary.WriteFile(Path.Combine("library", UnrealImportNamePolicy.SanitizeSegment(name), "asset_4K_Albedo.jpg"), "texture");
-        var normal = temporary.WriteFile(Path.Combine("library", UnrealImportNamePolicy.SanitizeSegment(name), "asset_4K_Normal.jpg"), "texture");
+        var files = (textureFiles.Length == 0
+                ? ["asset_4K_Albedo.jpg", "asset_4K_Normal.jpg"]
+                : textureFiles)
+            .Select(file => temporary.WriteFile(Path.Combine("library", UnrealImportNamePolicy.SanitizeSegment(name), file), "texture"))
+            .ToArray();
         var inventory = AssetContentAnalyzer.Analyze(
             "Surface",
-            [
-                new(albedo, Path.GetRelativePath(folder, albedo)),
-                new(normal, Path.GetRelativePath(folder, normal))
-            ]);
+            files.Select(path => new AssetContentFileCandidate(path, Path.GetRelativePath(folder, path))).ToArray());
         var asset = new AssetSummary(
             "asset-id",
             name,

@@ -85,6 +85,138 @@ public sealed class UnrealImportPackagePolicyTests
         Assert.NotEqual(first.PackageId, otherProfile.PackageId);
     }
 
+    // Unit test: package identity changes when material contract fields change under the same profile ID.
+    [Fact]
+    public void PackageIdentityTracksMaterialContractFields()
+    {
+        var asset = CreateAsset("Surface", "surface_4K_Albedo.jpg", "surface_4K_Normal.jpg");
+        var profile = Profile();
+        var baseline = UnrealImportPackagePolicy.Create(Request(asset, profile: profile));
+        var changedMaster = UnrealImportPackagePolicy.Create(Request(asset, profile: profile with { MasterMaterialPath = "/Game/Materials/M_New" }));
+        var changedPrefix = UnrealImportPackagePolicy.Create(Request(asset, profile: profile with { MaterialInstancePrefix = "CustomMI_" }));
+        var changedMapping = UnrealImportPackagePolicy.Create(Request(asset, profile: profile with
+        {
+            TextureParameterMappings = profile.TextureParameterMappings
+                .Select(static mapping => mapping.Role == UnrealImportSemanticRole.Normal
+                    ? mapping with { ParameterName = "MyNormalParameter" }
+                    : mapping)
+                .ToArray()
+        }));
+
+        Assert.NotEqual(baseline.PackageId, changedMaster.PackageId);
+        Assert.NotEqual(baseline.PackageId, changedPrefix.PackageId);
+        Assert.NotEqual(baseline.PackageId, changedMapping.PackageId);
+    }
+
+    // Unit test: package identity tracks source revision, texture semantic fields, and LOD fields.
+    [Fact]
+    public void PackageIdentityTracksSourceTextureAndLodSemanticFields()
+    {
+        var asset = CreateAsset("3D Asset",
+            "Var1/asset_LOD0.fbx",
+            "Var1/asset_LOD1.fbx",
+            "asset_4K_Albedo.jpg",
+            "asset_4K_Normal.jpg",
+            "asset_4K_Roughness.jpg");
+        var baseline = UnrealImportPackagePolicy.Create(Request(asset));
+        var changedSource = UnrealImportPackagePolicy.Create(Request(asset with { LastWriteTimeUtc = asset.LastWriteTimeUtc.AddMinutes(1) }));
+        var changedTexture = baseline with
+        {
+            Textures = baseline.Textures
+                .Select(static texture => texture.Role == UnrealImportSemanticRole.BaseColor
+                    ? texture with { MapType = TextureMapType.Specular, Format = "PNG", Resolution = 2048 }
+                    : texture)
+                .ToArray()
+        };
+        var changedLod = baseline with
+        {
+            Mesh = baseline.Mesh! with
+            {
+                Lods = baseline.Mesh.Lods
+                    .Select(static lod => lod.Lod == 1 ? lod with { SourcePath = lod.SourcePath + ".changed" } : lod)
+                    .ToArray()
+            }
+        };
+
+        Assert.NotEqual(baseline.PackageId, changedSource.PackageId);
+        Assert.NotEqual(baseline.PackageId, UnrealImportPackagePolicy.ComputePackageId(changedTexture));
+        Assert.NotEqual(baseline.PackageId, UnrealImportPackagePolicy.ComputePackageId(changedLod));
+    }
+
+    // Unit test: package identity is independent of equivalent mapping, texture, and LOD ordering.
+    [Fact]
+    public void PackageIdentityIgnoresEquivalentCollectionOrdering()
+    {
+        var package = CreatePackage("3D Asset",
+            "Var1/asset_LOD1.fbx",
+            "Var1/asset_LOD0.fbx",
+            "asset_4K_Albedo.jpg",
+            "asset_4K_Normal.jpg",
+            "asset_4K_Roughness.jpg");
+        var reordered = package with
+        {
+            Textures = package.Textures.Reverse().ToArray(),
+            Material = package.Material with
+            {
+                TextureParameterMappings = package.Material.TextureParameterMappings.Reverse().ToArray()
+            },
+            Mesh = package.Mesh! with
+            {
+                Lods = package.Mesh.Lods.Reverse().ToArray()
+            }
+        };
+
+        Assert.Equal(package.PackageId, UnrealImportPackagePolicy.ComputePackageId(reordered));
+    }
+
+    // Unit test: duplicate BaseColor candidates produce deterministic selection and ambiguity warning.
+    [Fact]
+    public void DuplicateBaseColorCandidatesWarnBeforeDeterministicSelection()
+    {
+        var first = CreatePackage("Surface",
+            "A/surface_4K_Albedo.jpg",
+            "B/surface_4K_Albedo.png",
+            "surface_4K_Normal.jpg",
+            "surface_4K_Roughness.jpg");
+        var second = CreatePackage("Surface",
+            "surface_4K_Roughness.jpg",
+            "B/surface_4K_Albedo.png",
+            "surface_4K_Normal.jpg",
+            "A/surface_4K_Albedo.jpg");
+
+        Assert.Equal(TextureMapType.Albedo, first.Textures.Single(static texture => texture.Role == UnrealImportSemanticRole.BaseColor).MapType);
+        Assert.Contains(first.Validation.Issues, static issue => issue.Code == UnrealImportPackageIssueCode.AmbiguousTextureRole);
+        Assert.Equal(first.Textures.Select(static texture => texture.SourcePath), second.Textures.Select(static texture => texture.SourcePath));
+        Assert.Equal(first.PackageId, second.PackageId);
+    }
+
+    // Unit test: Roughness is preferred over Gloss while preserving ambiguity and source map type.
+    [Fact]
+    public void RoughnessAndGlossPreferNativeRoughnessAndWarn()
+    {
+        var package = CreatePackage("Surface",
+            "surface_4K_Albedo.jpg",
+            "surface_4K_Normal.jpg",
+            "surface_4K_Gloss.jpg",
+            "surface_4K_Roughness.jpg");
+        var roughness = package.Textures.Single(static texture => texture.Role == UnrealImportSemanticRole.Roughness);
+
+        Assert.Equal(TextureMapType.Roughness, roughness.MapType);
+        Assert.Contains(package.Validation.Issues, static issue => issue.Code == UnrealImportPackageIssueCode.AmbiguousTextureRole);
+    }
+
+    // Unit test: single candidate per semantic role does not report false ambiguity.
+    [Fact]
+    public void SingleTextureCandidatePerRoleDoesNotWarnForAmbiguity()
+    {
+        var package = CreatePackage("Surface",
+            "surface_4K_Albedo.jpg",
+            "surface_4K_Normal.jpg",
+            "surface_4K_Roughness.jpg");
+
+        Assert.DoesNotContain(package.Validation.Issues, static issue => issue.Code == UnrealImportPackageIssueCode.AmbiguousTextureRole);
+    }
+
     // Unit test: material profile compatibility only returns profiles matching the normalized asset type.
     [Fact]
     public void ProfileCompatibilityFiltersByAssetType()

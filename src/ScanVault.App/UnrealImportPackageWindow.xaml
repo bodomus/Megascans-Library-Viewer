@@ -57,17 +57,45 @@
                         <ComboBox Margin="0,5,0,0" ItemsSource="{Binding Profiles}" DisplayMemberPath="Label"
                                   SelectedValuePath="Profile" SelectedValue="{Binding SelectedProfile, Mode=TwoWay}" />
                         <Grid Margin="0,8,0,0">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                            <Button Grid.Column="0" Content="Duplicate" Command="{Binding DuplicateProfileCommand}" Padding="10,4" Margin="0,0,6,0" />
-                            <Button Grid.Column="1" Content="Save user" Command="{Binding SaveProfileCommand}" Padding="10,4" Margin="0,0,6,0" />
-                            <Button Grid.Column="2" Content="Delete user" Command="{Binding DeleteProfileCommand}" Padding="10,4" />
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                            <Button Grid.Column="0" Content="New" Command="{Binding NewProfileCommand}" Padding="10,4" Margin="0,0,6,0" />
+                            <Button Grid.Column="1" Content="Duplicate" Command="{Binding DuplicateProfileCommand}" Padding="10,4" Margin="0,0,6,0" />
+                            <Button Grid.Column="2" Content="Save user" Command="{Binding SaveProfileCommand}" Padding="10,4" Margin="0,0,6,0" />
+                            <Button Grid.Column="3" Content="Delete user" Command="{Binding DeleteProfileCommand}" Padding="10,4" />
                         </Grid>
                     </StackPanel>
                     <StackPanel Grid.Column="1">
                         <TextBlock Text="Profile fields" FontWeight="SemiBold" />
-                        <TextBox Text="{Binding EditableProfileName, UpdateSourceTrigger=PropertyChanged}" Padding="7,5" Margin="0,5,0,0" />
-                        <TextBox Text="{Binding EditableMasterMaterialPath, UpdateSourceTrigger=PropertyChanged}" Padding="7,5" Margin="0,6,0,0" />
-                        <TextBox Text="{Binding EditableMaterialInstancePrefix, UpdateSourceTrigger=PropertyChanged}" Padding="7,5" Margin="0,6,0,0" />
+                        <TextBox Text="{Binding EditableProfileName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IsEditableProfile}" Padding="7,5" Margin="0,5,0,0" />
+                        <TextBox Text="{Binding EditableProfileDescription, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IsEditableProfile}" Padding="7,5" Margin="0,6,0,0" />
+                        <TextBox Text="{Binding EditableMasterMaterialPath, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IsEditableProfile}" Padding="7,5" Margin="0,6,0,0" />
+                        <TextBox Text="{Binding EditableMaterialInstancePrefix, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IsEditableProfile}" Padding="7,5" Margin="0,6,0,0" />
+                    </StackPanel>
+                </Grid>
+
+                <Grid Margin="0,12,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                        <TextBlock Text="Compatible asset types" FontWeight="SemiBold" />
+                        <ItemsControl ItemsSource="{Binding AssetTypeOptions}" Margin="0,5,0,0" IsEnabled="{Binding IsEditableProfile}">
+                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <CheckBox Content="{Binding AssetType}" IsChecked="{Binding IsSelected}" Margin="0,0,12,6" Foreground="{StaticResource TextCheckBox}" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="Profile defaults" FontWeight="SemiBold" />
+                        <WrapPanel Margin="0,5,0,0" IsEnabled="{Binding IsEditableProfile}">
+                            <CheckBox Content="Import LODs" IsChecked="{Binding EditableDefaultImportLods}" Margin="0,0,18,8" Foreground="{StaticResource TextCheckBox}" />
+                            <CheckBox Content="Enable Nanite" IsChecked="{Binding EditableDefaultEnableNanite}" Margin="0,0,18,8" Foreground="{StaticResource TextCheckBox}" />
+                            <CheckBox Content="Create MI" IsChecked="{Binding EditableDefaultCreateMaterialInstance}" Foreground="{StaticResource TextCheckBox}" />
+                        </WrapPanel>
                     </StackPanel>
                 </Grid>
 
@@ -110,10 +138,10 @@
                 </DataGrid>
 
                 <TextBlock Text="Material parameters" FontWeight="SemiBold" Margin="0,14,0,5" />
-                <DataGrid ItemsSource="{Binding ParameterMappings}" AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="True" MaxHeight="130">
+                <DataGrid ItemsSource="{Binding ParameterMappings}" AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="False" IsEnabled="{Binding IsEditableProfile}" MaxHeight="150">
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="Role" Binding="{Binding Role}" Width="160" />
-                        <DataGridTextColumn Header="Parameter" Binding="{Binding ParameterName}" Width="*" />
+                        <DataGridTextColumn Header="Role" Binding="{Binding Role}" Width="160" IsReadOnly="True" />
+                        <DataGridTextColumn Header="Parameter" Binding="{Binding ParameterName, UpdateSourceTrigger=PropertyChanged}" Width="*" />
                     </DataGrid.Columns>
                 </DataGrid>
 

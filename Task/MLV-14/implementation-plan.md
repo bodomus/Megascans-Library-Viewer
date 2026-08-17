@@ -41,3 +41,10 @@
 - Run restore/build/test/format/diff checks.
 - Run post-change CRG impact inspection and attempt Graphify refresh.
 - Write implementation and review reports.
+
+## Review Fix Scope
+
+- Extend `packageId` so it tracks the material contract, selected texture/LOD semantic fields, and the indexed source revision marker while still excluding generation time.
+- Detect duplicate semantic texture-role candidates before deterministic candidate collapse, preserve ambiguity warnings through export revalidation, and document the selection priority.
+- Complete the material profile editor with new profile creation, compatible asset-type toggles, editable mappings, editable default options, validation, and user-profile persistence coverage.
+- Keep built-in profiles immutable and ensure unsaved profile edits refresh the preview/package identity without persisting until `Save user`.

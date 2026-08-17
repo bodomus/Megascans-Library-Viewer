@@ -14,7 +14,40 @@ public sealed record UnrealMaterialProfileOption(UnrealMaterialProfile Profile, 
 public sealed record UnrealImportTextureRow(UnrealImportSemanticRole Role, TextureMapType MapType, int? Resolution, string Format, string SourcePath);
 public sealed record UnrealImportLodRow(string Variant, int Lod, MeshFormat Format, string SourcePath);
 public sealed record UnrealImportValidationRow(UnrealImportValidationSeverity Severity, UnrealImportPackageIssueCode Code, string Message, string? RelatedPath);
-public sealed record UnrealImportParameterRow(UnrealImportSemanticRole Role, string ParameterName);
+
+public sealed class UnrealImportParameterRow(UnrealImportSemanticRole role, string parameterName, Action changed) : ObservableObject
+{
+    private string parameterName = parameterName;
+    public UnrealImportSemanticRole Role { get; } = role;
+    public string ParameterName
+    {
+        get => parameterName;
+        set
+        {
+            if (SetProperty(ref parameterName, value))
+            {
+                changed();
+            }
+        }
+    }
+}
+
+public sealed class UnrealImportAssetTypeOption(string assetType, bool isSelected, Action changed) : ObservableObject
+{
+    private bool isSelected = isSelected;
+    public string AssetType { get; } = assetType;
+    public bool IsSelected
+    {
+        get => isSelected;
+        set
+        {
+            if (SetProperty(ref isSelected, value))
+            {
+                changed();
+            }
+        }
+    }
+}
 
 public sealed class UnrealImportPackageViewModel : ObservableObject
 {
@@ -32,8 +65,13 @@ public sealed class UnrealImportPackageViewModel : ObservableObject
     private bool createMaterialInstance = true;
     private string statusText = "Review the package before export.";
     private string editableProfileName = string.Empty;
+    private string editableProfileDescription = string.Empty;
     private string editableMasterMaterialPath = string.Empty;
     private string editableMaterialInstancePrefix = "MI_";
+    private bool editableDefaultImportLods = true;
+    private bool editableDefaultEnableNanite;
+    private bool editableDefaultCreateMaterialInstance = true;
+    private bool suppressRefresh;
     private UnrealImportPackage package;
 
     public UnrealImportPackageViewModel(
@@ -53,6 +91,7 @@ public sealed class UnrealImportPackageViewModel : ObservableObject
         destinationBasePath = settings.UnrealImportPackageSettings.DefaultDestinationBasePath;
         package = EmptyPackage(asset);
         ExportCommand = new AsyncRelayCommand(ExportAsync, () => CanExport);
+        NewProfileCommand = new AsyncRelayCommand(CreateNewProfileAsync);
         DuplicateProfileCommand = new AsyncRelayCommand(DuplicateSelectedProfileAsync, () => SelectedProfile is not null);
         SaveProfileCommand = new AsyncRelayCommand(SaveSelectedUserProfileAsync, () => SelectedProfile?.IsBuiltIn == false);
         DeleteProfileCommand = new AsyncRelayCommand(DeleteSelectedUserProfileAsync, () => SelectedProfile?.IsBuiltIn == false);
@@ -64,7 +103,9 @@ public sealed class UnrealImportPackageViewModel : ObservableObject
     public ObservableCollection<UnrealImportLodRow> Lods { get; } = [];
     public ObservableCollection<UnrealImportValidationRow> ValidationIssues { get; } = [];
     public ObservableCollection<UnrealImportParameterRow> ParameterMappings { get; } = [];
+    public ObservableCollection<UnrealImportAssetTypeOption> AssetTypeOptions { get; } = [];
     public AsyncRelayCommand ExportCommand { get; }
+    public AsyncRelayCommand NewProfileCommand { get; }
     public AsyncRelayCommand DuplicateProfileCommand { get; }
     public AsyncRelayCommand SaveProfileCommand { get; }
     public AsyncRelayCommand DeleteProfileCommand { get; }
@@ -89,6 +130,7 @@ public sealed class UnrealImportPackageViewModel : ObservableObject
     public string PrimaryVariant => Package.Mesh?.PrimaryVariant ?? "None";
     public string JsonPreview => exportService.Serialize(Package);
     public UnrealImportPackage Package => package;
+    public bool IsEditableProfile => SelectedProfile?.IsBuiltIn == false;
 
     public UnrealMaterialProfile? SelectedProfile
     {
@@ -180,7 +222,25 @@ public sealed class UnrealImportPackageViewModel : ObservableObject
     public string EditableProfileName
     {
         get => editableProfileName;
-        set => SetProperty(ref editableProfileName, value);
+        set
+        {
+            if (SetProperty(ref editableProfileName, value))
+            {
+                RefreshPackage();
+            }
+        }
+    }
+
+    public string EditableProfileDescription
+    {
+        get => editableProfileDescription;
+        set
+        {
+            if (SetProperty(ref editableProfileDescription, value))
+            {
+                RefreshPackage();
+            }
+        }
     }
 
     public string EditableMasterMaterialPath
@@ -202,6 +262,45 @@ public sealed class UnrealImportPackageViewModel : ObservableObject
         {
             if (SetProperty(ref editableMaterialInstancePrefix, value))
             {
+                RefreshPackage();
+            }
+        }
+    }
+
+    public bool EditableDefaultImportLods
+    {
+        get => editableDefaultImportLods;
+        set
+        {
+            if (SetProperty(ref editableDefaultImportLods, value))
+            {
+                ImportLods = value;
+                RefreshPackage();
+            }
+        }
+    }
+
+    public bool EditableDefaultEnableNanite
+    {
+        get => editableDefaultEnableNanite;
+        set
+        {
+            if (SetProperty(ref editableDefaultEnableNanite, value))
+            {
+                EnableNanite = value;
+                RefreshPackage();
+            }
+        }
+    }
+
+    public bool EditableDefaultCreateMaterialInstance
+    {
+        get => editableDefaultCreateMaterialInstance;
+        set
+        {
+            if (SetProperty(ref editableDefaultCreateMaterialInstance, value))
+            {
+                CreateMaterialInstance = value;
                 RefreshPackage();
             }
         }
@@ -281,6 +380,19 @@ public sealed class UnrealImportPackageViewModel : ObservableObject
         return manifest;
     }
 
+    private Task CreateNewProfileAsync(CancellationToken cancellationToken)
+    {
+        var profile = UnrealMaterialProfilePolicy.CreateUserProfile(
+            $"user-{Guid.NewGuid():N}",
+            $"New {Asset.AssetType} Profile",
+            Asset.AssetType,
+            Profiles.Select(static option => option.Profile).FirstOrDefault(static profile => profile.IsBuiltIn));
+        Profiles.Add(new(profile, profile.Name));
+        SelectedProfile = profile;
+        StatusText = "New user profile created. Save it to persist.";
+        return Task.CompletedTask;
+    }
+
     private async Task DuplicateSelectedProfileAsync(CancellationToken cancellationToken)
     {
         if (SelectedProfile is null)
@@ -288,15 +400,13 @@ public sealed class UnrealImportPackageViewModel : ObservableObject
             return;
         }
 
-        var userProfiles = Profiles.Select(static option => option.Profile).Where(static profile => !profile.IsBuiltIn).ToList();
         var copy = UnrealMaterialProfilePolicy.Duplicate(
-            SelectedProfile,
+            DraftProfile(),
             $"user-{Guid.NewGuid():N}",
             $"{SelectedProfile.Name} Copy");
-        userProfiles.Add(copy);
-        await profileStore.SaveUserProfilesAsync(userProfiles, cancellationToken).ConfigureAwait(true);
-        RebuildProfiles(UnrealMaterialProfilePolicy.MergeWithBuiltIns(userProfiles));
+        Profiles.Add(new(copy, copy.Name));
         SelectedProfile = copy;
+        StatusText = "User profile copy created. Save it to persist.";
         ApplicationLog.UnrealMaterialProfileChanged(logger, "created", copy.Id, copy.Name);
     }
 
@@ -307,12 +417,7 @@ public sealed class UnrealImportPackageViewModel : ObservableObject
             return;
         }
 
-        var updated = SelectedProfile with
-        {
-            Name = EditableProfileName.Trim(),
-            MasterMaterialPath = string.IsNullOrWhiteSpace(EditableMasterMaterialPath) ? null : EditableMasterMaterialPath.Trim(),
-            MaterialInstancePrefix = EditableMaterialInstancePrefix.Trim()
-        };
+        var updated = DraftProfile();
         var userProfiles = Profiles.Select(static option => option.Profile)
             .Where(profile => !profile.IsBuiltIn && !StringComparer.OrdinalIgnoreCase.Equals(profile.Id, updated.Id))
             .Append(updated)
@@ -327,6 +432,7 @@ public sealed class UnrealImportPackageViewModel : ObservableObject
         await profileStore.SaveUserProfilesAsync(userProfiles, cancellationToken).ConfigureAwait(true);
         RebuildProfiles(UnrealMaterialProfilePolicy.MergeWithBuiltIns(userProfiles));
         SelectedProfile = updated;
+        StatusText = "User profile saved.";
         ApplicationLog.UnrealMaterialProfileChanged(logger, "updated", updated.Id, updated.Name);
     }
 
@@ -363,16 +469,38 @@ public sealed class UnrealImportPackageViewModel : ObservableObject
             return;
         }
 
-        ImportLods = SelectedProfile.DefaultOptions.ImportLods;
-        EnableNanite = SelectedProfile.DefaultOptions.EnableNanite;
-        CreateMaterialInstance = SelectedProfile.CreateMaterialInstance && SelectedProfile.DefaultOptions.CreateMaterialInstance;
-        EditableProfileName = SelectedProfile.Name;
-        EditableMasterMaterialPath = SelectedProfile.MasterMaterialPath ?? string.Empty;
-        EditableMaterialInstancePrefix = SelectedProfile.MaterialInstancePrefix;
+        suppressRefresh = true;
+        try
+        {
+            ImportLods = SelectedProfile.DefaultOptions.ImportLods;
+            EnableNanite = SelectedProfile.DefaultOptions.EnableNanite;
+            CreateMaterialInstance = SelectedProfile.CreateMaterialInstance && SelectedProfile.DefaultOptions.CreateMaterialInstance;
+            EditableProfileName = SelectedProfile.Name;
+            EditableProfileDescription = SelectedProfile.Description ?? string.Empty;
+            EditableMasterMaterialPath = SelectedProfile.MasterMaterialPath ?? string.Empty;
+            EditableMaterialInstancePrefix = SelectedProfile.MaterialInstancePrefix;
+            editableDefaultImportLods = SelectedProfile.DefaultOptions.ImportLods;
+            editableDefaultEnableNanite = SelectedProfile.DefaultOptions.EnableNanite;
+            editableDefaultCreateMaterialInstance = SelectedProfile.DefaultOptions.CreateMaterialInstance;
+            OnPropertyChanged(nameof(EditableDefaultImportLods));
+            OnPropertyChanged(nameof(EditableDefaultEnableNanite));
+            OnPropertyChanged(nameof(EditableDefaultCreateMaterialInstance));
+            RebuildProfileEditorCollections(SelectedProfile);
+            OnPropertyChanged(nameof(IsEditableProfile));
+        }
+        finally
+        {
+            suppressRefresh = false;
+        }
     }
 
     private void RefreshPackage()
     {
+        if (suppressRefresh)
+        {
+            return;
+        }
+
         if (SelectedProfile is null)
         {
             return;
@@ -381,11 +509,7 @@ public sealed class UnrealImportPackageViewModel : ObservableObject
         package = UnrealImportPackagePolicy.Create(
             new(
                 Asset,
-                SelectedProfile with
-                {
-                    MasterMaterialPath = string.IsNullOrWhiteSpace(EditableMasterMaterialPath) ? SelectedProfile.MasterMaterialPath : EditableMasterMaterialPath.Trim(),
-                    MaterialInstancePrefix = string.IsNullOrWhiteSpace(EditableMaterialInstancePrefix) ? SelectedProfile.MaterialInstancePrefix : EditableMaterialInstancePrefix.Trim()
-                },
+                DraftProfile(),
                 DestinationBasePath,
                 new(ImportLods, EnableNanite, CreateMaterialInstance, false),
                 buildInfo.ApplicationVersion,
@@ -427,11 +551,54 @@ public sealed class UnrealImportPackageViewModel : ObservableObject
             ValidationIssues.Add(new(issue.Severity, issue.Code, issue.Message, issue.RelatedPath));
         }
 
-        ParameterMappings.Clear();
-        foreach (var mapping in Package.Material.TextureParameterMappings)
+    }
+
+    private void RebuildProfileEditorCollections(UnrealMaterialProfile profile)
+    {
+        AssetTypeOptions.Clear();
+        foreach (var assetType in UnrealMaterialProfilePolicy.SupportedAssetTypes)
         {
-            ParameterMappings.Add(new(mapping.Role, mapping.ParameterName));
+            AssetTypeOptions.Add(new(assetType, profile.AssetTypes.Contains(assetType, StringComparer.OrdinalIgnoreCase), RefreshPackage));
         }
+
+        ParameterMappings.Clear();
+        var mappings = profile.TextureParameterMappings
+            .GroupBy(static mapping => mapping.Role)
+            .ToDictionary(static group => group.Key, static group => group.First().ParameterName);
+        foreach (var mapping in UnrealMaterialProfilePolicy.DefaultTextureParameterMappings())
+        {
+            ParameterMappings.Add(new(
+                mapping.Role,
+                mappings.TryGetValue(mapping.Role, out var parameterName) ? parameterName : mapping.ParameterName,
+                RefreshPackage));
+        }
+    }
+
+    private UnrealMaterialProfile DraftProfile()
+    {
+        var profile = SelectedProfile ?? UnrealMaterialProfilePolicy.CreateUserProfile(
+            $"user-{Guid.NewGuid():N}",
+            $"New {Asset.AssetType} Profile",
+            Asset.AssetType);
+        var selectedTypes = AssetTypeOptions
+            .Where(static option => option.IsSelected)
+            .Select(static option => option.AssetType)
+            .ToArray();
+        var mappings = ParameterMappings
+            .Select(static row => new UnrealImportTextureParameterMapping(row.Role, row.ParameterName.Trim()))
+            .ToArray();
+        return profile with
+        {
+            Name = EditableProfileName.Trim(),
+            Description = string.IsNullOrWhiteSpace(EditableProfileDescription) ? null : EditableProfileDescription.Trim(),
+            AssetTypes = selectedTypes,
+            MasterMaterialPath = string.IsNullOrWhiteSpace(EditableMasterMaterialPath) ? null : EditableMasterMaterialPath.Trim(),
+            CreateMaterialInstance = EditableDefaultCreateMaterialInstance,
+            MaterialInstancePrefix = EditableMaterialInstancePrefix.Trim(),
+            TextureParameterMappings = mappings,
+            DefaultOptions = new(EditableDefaultImportLods, EditableDefaultEnableNanite, EditableDefaultCreateMaterialInstance, false),
+            IsBuiltIn = profile.IsBuiltIn
+        };
     }
 
     private IReadOnlyList<UnrealImportDefaultProfile> UpsertDefaultProfile(IReadOnlyList<UnrealImportDefaultProfile> defaults)
@@ -453,6 +620,7 @@ public sealed class UnrealImportPackageViewModel : ObservableObject
         DuplicateProfileCommand.NotifyCanExecuteChanged();
         SaveProfileCommand.NotifyCanExecuteChanged();
         DeleteProfileCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(IsEditableProfile));
     }
 
     private static UnrealImportPackage EmptyPackage(AssetSummary asset) =>

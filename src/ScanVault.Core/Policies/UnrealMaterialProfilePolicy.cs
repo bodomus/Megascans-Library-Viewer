@@ -5,6 +5,15 @@ namespace ScanVault.Core.Policies;
 public static class UnrealMaterialProfilePolicy
 {
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
+    public static IReadOnlyList<string> SupportedAssetTypes { get; } =
+    [
+        "Surface",
+        "3D Asset",
+        "3D Plant",
+        "Atlas",
+        "Decal",
+        "Billboard"
+    ];
 
     public static IReadOnlyList<UnrealMaterialProfile> BuiltInProfiles { get; } =
     [
@@ -12,7 +21,8 @@ public static class UnrealMaterialProfilePolicy
         CreateBuiltIn("default-3d-asset", "Default 3D Asset", "3D Asset", "/Game/Materials/M_Master_Megascans_3D", true),
         CreateBuiltIn("default-3d-plant", "Default 3D Plant", "3D Plant", "/Game/Materials/M_Master_Megascans_Foliage", true),
         CreateBuiltIn("default-atlas", "Default Atlas", "Atlas", "/Game/Materials/M_Master_Megascans_Atlas", false),
-        CreateBuiltIn("default-decal", "Default Decal", "Decal", "/Game/Materials/M_Master_Megascans_Decal", false)
+        CreateBuiltIn("default-decal", "Default Decal", "Decal", "/Game/Materials/M_Master_Megascans_Decal", false),
+        CreateBuiltIn("default-billboard", "Default Billboard", "Billboard", "/Game/Materials/M_Master_Megascans_Billboard", false)
     ];
 
     public static IReadOnlyList<UnrealMaterialProfile> MergeWithBuiltIns(IEnumerable<UnrealMaterialProfile> userProfiles) =>
@@ -108,6 +118,26 @@ public static class UnrealMaterialProfilePolicy
 
     public static UnrealMaterialProfile Duplicate(UnrealMaterialProfile profile, string id, string name) =>
         profile with { Id = id, Name = name, IsBuiltIn = false };
+
+    public static UnrealMaterialProfile CreateUserProfile(
+        string id,
+        string name,
+        string assetType,
+        UnrealMaterialProfile? template = null)
+    {
+        var source = template ?? BuiltInProfiles.FirstOrDefault(profile => IsCompatible(profile, assetType)) ?? BuiltInProfiles[0];
+        return source with
+        {
+            Id = id,
+            Name = name,
+            Description = $"User profile for {assetType} imports.",
+            AssetTypes = [assetType],
+            IsBuiltIn = false
+        };
+    }
+
+    public static IReadOnlyList<UnrealImportTextureParameterMapping> DefaultTextureParameterMappings() =>
+        DefaultMappings();
 
     private static UnrealMaterialProfile CreateBuiltIn(
         string id,

@@ -51,6 +51,18 @@ ScanVault maps normalized `TextureMapType` values to import roles:
 
 The manifest preserves the original normalized `mapType`. For example, `Gloss` remains `mapType: "gloss"` while carrying role `roughness`. ScanVault does not numerically invert or convert gloss maps.
 
+When more than one texture in the selected primary texture set maps to the same semantic role, ScanVault records an `ambiguousTextureRole` validation warning before collapsing candidates. Schema v1 still exports only the selected texture for each role.
+
+Candidate priority is deterministic:
+
+1. preferred/native map type for the role;
+2. higher resolution;
+3. normalized map type;
+4. texture format;
+5. normalized source path text.
+
+For the `Roughness` role, native `Roughness` is preferred over `Gloss`; `Gloss` remains a fallback and keeps its original `mapType`.
+
 ## Package Identity
 
 `packageId` is a SHA-256 based stable semantic identity truncated to 32 lowercase hex characters. It includes:
@@ -59,12 +71,21 @@ The manifest preserves the original normalized `mapType`. For example, `Gloss` r
 - asset ID;
 - source JSON path;
 - physical asset folder path;
+- source `lastWriteTimeUtc` as the existing indexed source revision marker;
+- readiness status and readiness rule version;
 - destination content path;
+- sanitized asset base name;
 - material profile ID;
+- Master Material path;
+- Material Instance prefix;
+- generated Material Instance name;
+- all texture parameter mappings sorted by semantic role and parameter name;
 - selected primary variant;
 - declarative options;
-- selected texture roles and source paths;
-- selected mesh LODs and source paths.
+- selected texture roles, map types, source paths, texture-set kind, resolution, and format;
+- selected mesh LOD variant, LOD number, format, and source path.
+
+Before hashing, path separators are normalized to `/`, booleans are normalized as lowercase `true`/`false`, numeric values use invariant formatting, and every collection is explicitly sorted. Path text is not lowercased; ScanVault preserves indexed physical path identity while making separator behavior stable.
 
 It excludes `generatedAtUtc`, so regenerating the same package at a different time does not change identity.
 
@@ -99,7 +120,19 @@ Sanitization handles whitespace, punctuation, slash/backslash, repeated separato
 
 Material profiles are declarative templates. They include stable ID, name, compatible asset types, Master Material path, Material Instance prefix, default options, and semantic-role-to-parameter mappings.
 
-Built-in templates are provided for Surface, 3D Asset, 3D Plant, Atlas, and Decal. Built-ins are not destructively edited; duplicate a profile to create a user profile.
+Built-in templates are provided for Surface, 3D Asset, 3D Plant, Atlas, Decal, and Billboard. Built-ins are visible, selectable, and usable, but not destructively edited or deleted.
+
+The package window includes a simple profile editor. A user can create a new profile, duplicate a built-in or user profile, edit user profiles, save, and delete user profiles. Editable user-profile fields are:
+
+- name;
+- description;
+- compatible asset types;
+- Master Material `/Game/...` path;
+- Material Instance prefix;
+- texture parameter mappings for BaseColor, Normal, Roughness, AO, Displacement, and Opacity;
+- default Import LODs, Enable Nanite, and Create Material Instance options.
+
+`New Profile` creates a mutable user profile for the current asset type from the current built-in template and does not persist it until `Save user` is used. `Duplicate` creates a mutable user copy of the current profile and also waits for `Save user` before persistence.
 
 ScanVault validates only profile syntax. It does not verify that the Master Material or parameter names exist in Unreal.
 

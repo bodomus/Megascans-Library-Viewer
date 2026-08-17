@@ -10,7 +10,9 @@ public static class UnrealImportPackageValidationPolicy
         UnrealImportPackage package,
         Func<string, bool>? sourceExists = null)
     {
-        var issues = new List<UnrealImportPackageIssue>();
+        var issues = package.Validation.Issues
+            .Where(static issue => issue.Code == UnrealImportPackageIssueCode.AmbiguousTextureRole)
+            .ToList();
         if (package.SchemaVersion != UnrealImportPackageSchema.CurrentVersion)
         {
             issues.Add(Error(UnrealImportPackageIssueCode.UnsupportedSchema,
@@ -82,6 +84,7 @@ public static class UnrealImportPackageValidationPolicy
             }
         }
 
+        AddMaterialMappingIssues(package, issues);
         AddTextureMappingIssues(package, issues);
         AddSourceExistenceIssues(package, sourceExists, issues);
 
@@ -93,6 +96,38 @@ public static class UnrealImportPackageValidationPolicy
             .ToArray());
     }
 
+    private static void AddMaterialMappingIssues(
+        UnrealImportPackage package,
+        List<UnrealImportPackageIssue> issues)
+    {
+        if (string.IsNullOrWhiteSpace(package.Material.MaterialInstancePrefix))
+        {
+            issues.Add(Error(UnrealImportPackageIssueCode.MissingProfile,
+                "Material Instance prefix is required.", null));
+        }
+
+        if (package.Material.TextureParameterMappings.Count == 0)
+        {
+            issues.Add(Error(UnrealImportPackageIssueCode.MissingProfile,
+                "At least one texture parameter mapping is required.", null));
+        }
+
+        foreach (var group in package.Material.TextureParameterMappings
+                     .GroupBy(static mapping => mapping.Role)
+                     .Where(static group => group.Count() > 1)
+                     .OrderBy(static group => group.Key))
+        {
+            issues.Add(Error(UnrealImportPackageIssueCode.MissingProfile,
+                $"Texture role '{group.Key}' has duplicate parameter mappings.", null));
+        }
+
+        if (package.Material.TextureParameterMappings.Any(static mapping => string.IsNullOrWhiteSpace(mapping.ParameterName)))
+        {
+            issues.Add(Error(UnrealImportPackageIssueCode.MissingProfile,
+                "Texture parameter names must be non-empty.", null));
+        }
+    }
+
     private static void AddTextureMappingIssues(
         UnrealImportPackage package,
         List<UnrealImportPackageIssue> issues)
@@ -101,13 +136,6 @@ public static class UnrealImportPackageValidationPolicy
             .Where(static texture => texture.Role != UnrealImportSemanticRole.Other)
             .GroupBy(static texture => texture.Role)
             .ToDictionary(static group => group.Key, static group => group.ToArray());
-        foreach (var item in texturesByRole.Where(static item => item.Value.Length > 1).OrderBy(static item => item.Key))
-        {
-            issues.Add(Warning(UnrealImportPackageIssueCode.AmbiguousTextureRole,
-                $"Multiple textures map to semantic role {item.Key}; the first deterministic candidate was selected.",
-                item.Value[0].SourcePath));
-        }
-
         foreach (var mapping in package.Material.TextureParameterMappings.OrderBy(static mapping => mapping.Role))
         {
             if (mapping.Role == UnrealImportSemanticRole.BaseColor)

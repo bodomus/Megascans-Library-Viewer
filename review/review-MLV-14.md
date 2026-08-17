@@ -6,6 +6,8 @@ Implemented the read-only Unreal Engine import package manifest feature directly
 
 The feature adds a versioned JSON contract, deterministic Core package generation, material profile support, atomic Infrastructure export, and a WPF preview/export flow from the selected asset.
 
+Review findings were addressed in the same `master` working tree: package identity now tracks material contract and source-revision semantics, duplicate semantic texture candidates are detected before collapse, and the material profile editor now supports full user-profile editing instead of only name/path/prefix edits.
+
 ## Changed Areas
 
 - Core manifest/domain models and policies.
@@ -13,20 +15,21 @@ The feature adds a versioned JSON contract, deterministic Core package generatio
 - Infrastructure JSON profile persistence and manifest export.
 - App ViewModel/window/commands for package preview, copy, profile selection, and export.
 - Documentation and tests.
+- Review-fix coverage for package identity, texture ambiguity, material profile persistence, and editable WPF ViewModel behavior.
 
 ## Validation
 
 - `dotnet restore ScanVault.sln -v:minimal` passed after sandbox escalation.
-- `dotnet build ScanVault.sln --configuration Release -m:1 -v:minimal` passed.
+- `dotnet build ScanVault.sln --configuration Release --no-restore -m:1 -v:minimal` passed.
 - `dotnet test ScanVault.sln --configuration Release --no-build -m:1 -v:minimal` passed.
 - `dotnet format ScanVault.sln --verify-no-changes --no-restore` passed after sandbox escalation.
 - `git diff --check` passed with line-ending normalization warnings only.
 - `code-review-graph update --brief` and `code-review-graph detect-changes --base HEAD --brief` passed.
 - `graphify update` failed with `[WinError 5] Access is denied`.
 - Test totals after implementation:
-  - Core: 84
-  - Infrastructure: 61
-  - App: 37
+  - Core: 90
+  - Infrastructure: 65
+  - App: 41
 
 ## Explicit Non-Goals Preserved
 
