@@ -1,0 +1,148 @@
+<Window x:Class="ScanVault.App.UnrealImportPackageWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Create UE Import Package" Width="900" Height="760" MinWidth="760" MinHeight="620"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource WindowBackground}" Foreground="{StaticResource TextPrimary}">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Left">
+                        <TextBlock Text="{Binding AssetName}" FontSize="20" FontWeight="SemiBold" />
+                        <TextBlock Foreground="{StaticResource TextSecondary}">
+                            <Run Text="{Binding AssetType}" />
+                            <Run Text="    " />
+                            <Run Text="{Binding ReadinessDisplay}" />
+                            <Run Text="    Schema v" />
+                            <Run Text="{Binding SchemaVersion}" />
+                        </TextBlock>
+                    </StackPanel>
+                    <TextBlock DockPanel.Dock="Right" Text="{Binding PackageId}" Foreground="{StaticResource TextSecondary}" TextAlignment="Right" />
+                </DockPanel>
+
+                <Grid Margin="0,16,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                        <TextBlock Text="Unreal base path" FontWeight="SemiBold" />
+                        <TextBox Text="{Binding DestinationBasePath, UpdateSourceTrigger=PropertyChanged}" Padding="7,5" Margin="0,5,0,0" />
+                        <TextBlock Text="{Binding FinalContentPath}" Foreground="{StaticResource Accent}" TextWrapping="Wrap" Margin="0,6,0,0" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="Destination file" FontWeight="SemiBold" />
+                        <Grid Margin="0,5,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0" Text="{Binding DestinationPath, UpdateSourceTrigger=PropertyChanged}" Padding="7,5" />
+                            <Button Grid.Column="1" Content="Browse..." Click="OnBrowseClick" Padding="12,5" Margin="8,0,0,0" />
+                        </Grid>
+                    </StackPanel>
+                </Grid>
+
+                <Grid Margin="0,16,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                        <TextBlock Text="Material profile" FontWeight="SemiBold" />
+                        <ComboBox Margin="0,5,0,0" ItemsSource="{Binding Profiles}" DisplayMemberPath="Label"
+                                  SelectedValuePath="Profile" SelectedValue="{Binding SelectedProfile, Mode=TwoWay}" />
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                            <Button Grid.Column="0" Content="Duplicate" Command="{Binding DuplicateProfileCommand}" Padding="10,4" Margin="0,0,6,0" />
+                            <Button Grid.Column="1" Content="Save user" Command="{Binding SaveProfileCommand}" Padding="10,4" Margin="0,0,6,0" />
+                            <Button Grid.Column="2" Content="Delete user" Command="{Binding DeleteProfileCommand}" Padding="10,4" />
+                        </Grid>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="Profile fields" FontWeight="SemiBold" />
+                        <TextBox Text="{Binding EditableProfileName, UpdateSourceTrigger=PropertyChanged}" Padding="7,5" Margin="0,5,0,0" />
+                        <TextBox Text="{Binding EditableMasterMaterialPath, UpdateSourceTrigger=PropertyChanged}" Padding="7,5" Margin="0,6,0,0" />
+                        <TextBox Text="{Binding EditableMaterialInstancePrefix, UpdateSourceTrigger=PropertyChanged}" Padding="7,5" Margin="0,6,0,0" />
+                    </StackPanel>
+                </Grid>
+
+                <Grid Margin="0,16,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="{Binding SanitizedAssetName, StringFormat=Asset base: {0}}" Foreground="{StaticResource TextSecondary}" />
+                    <TextBlock Grid.Column="1" Text="{Binding PrimaryVariant, StringFormat=Variant: {0}}" Foreground="{StaticResource TextSecondary}" />
+                    <TextBlock Grid.Column="2" Text="{Binding MaterialInstanceName, StringFormat=MI: {0}}" Foreground="{StaticResource TextSecondary}" />
+                </Grid>
+
+                <WrapPanel Margin="0,12,0,0">
+                    <CheckBox Content="Import LODs" IsChecked="{Binding ImportLods}" Margin="0,0,18,8" Foreground="{StaticResource TextCheckBox}" />
+                    <CheckBox Content="Enable Nanite" IsChecked="{Binding EnableNanite}" Margin="0,0,18,8" Foreground="{StaticResource TextCheckBox}" />
+                    <CheckBox Content="Create Material Instance" IsChecked="{Binding CreateMaterialInstance}" Foreground="{StaticResource TextCheckBox}" />
+                </WrapPanel>
+
+                <TextBlock Text="Mesh LODs" FontWeight="SemiBold" Margin="0,14,0,5" />
+                <DataGrid ItemsSource="{Binding Lods}" AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="True" MaxHeight="130">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Variant" Binding="{Binding Variant}" Width="120" />
+                        <DataGridTextColumn Header="LOD" Binding="{Binding Lod}" Width="60" />
+                        <DataGridTextColumn Header="Format" Binding="{Binding Format}" Width="80" />
+                        <DataGridTextColumn Header="Source" Binding="{Binding SourcePath}" Width="*" />
+                    </DataGrid.Columns>
+                </DataGrid>
+
+                <TextBlock Text="Textures" FontWeight="SemiBold" Margin="0,14,0,5" />
+                <DataGrid ItemsSource="{Binding Textures}" AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="True" MaxHeight="180">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Role" Binding="{Binding Role}" Width="110" />
+                        <DataGridTextColumn Header="Map" Binding="{Binding MapType}" Width="110" />
+                        <DataGridTextColumn Header="Resolution" Binding="{Binding Resolution}" Width="90" />
+                        <DataGridTextColumn Header="Format" Binding="{Binding Format}" Width="80" />
+                        <DataGridTextColumn Header="Source" Binding="{Binding SourcePath}" Width="*" />
+                    </DataGrid.Columns>
+                </DataGrid>
+
+                <TextBlock Text="Material parameters" FontWeight="SemiBold" Margin="0,14,0,5" />
+                <DataGrid ItemsSource="{Binding ParameterMappings}" AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="True" MaxHeight="130">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Role" Binding="{Binding Role}" Width="160" />
+                        <DataGridTextColumn Header="Parameter" Binding="{Binding ParameterName}" Width="*" />
+                    </DataGrid.Columns>
+                </DataGrid>
+
+                <TextBlock Text="Validation" FontWeight="SemiBold" Margin="0,14,0,5" />
+                <DataGrid ItemsSource="{Binding ValidationIssues}" AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="True" MaxHeight="160">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Severity" Binding="{Binding Severity}" Width="90" />
+                        <DataGridTextColumn Header="Code" Binding="{Binding Code}" Width="170" />
+                        <DataGridTextColumn Header="Message" Binding="{Binding Message}" Width="*" />
+                        <DataGridTextColumn Header="Path" Binding="{Binding RelatedPath}" Width="220" />
+                    </DataGrid.Columns>
+                </DataGrid>
+
+                <TextBlock Text="Manifest JSON" FontWeight="SemiBold" Margin="0,14,0,5" />
+                <TextBox Text="{Binding JsonPreview}" FontFamily="Consolas" FontSize="12" TextWrapping="NoWrap"
+                         AcceptsReturn="True" IsReadOnly="True" HorizontalScrollBarVisibility="Auto"
+                         VerticalScrollBarVisibility="Auto" Height="220" />
+            </StackPanel>
+        </ScrollViewer>
+
+        <Border Grid.Row="1" Margin="0,14,0,0" Padding="10" Background="{StaticResource PanelBackground}">
+            <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" />
+        </Border>
+
+        <DockPanel Grid.Row="2" Margin="0,14,0,0">
+            <Button DockPanel.Dock="Right" Content="Export Package" Click="OnExportClick" IsEnabled="{Binding CanExport}" Width="125" Padding="12,6" />
+            <Button DockPanel.Dock="Right" Content="Copy Manifest" Click="OnCopyManifestClick" Width="120" Padding="12,6" Margin="0,0,8,0" />
+            <Button DockPanel.Dock="Right" Content="Open Export Folder" Click="OnOpenExportFolderClick" Width="140" Padding="12,6" Margin="0,0,8,0" />
+            <Button DockPanel.Dock="Right" Content="Close" IsCancel="True" Width="82" Padding="12,6" Margin="0,0,8,0" />
+        </DockPanel>
+    </Grid>
+</Window>

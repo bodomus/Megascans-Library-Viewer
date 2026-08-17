@@ -32,7 +32,8 @@ public sealed class SettingsViewModel(ISettingsStore store) : ObservableObject
     public string? ValidationError { get => validationError; private set => SetProperty(ref validationError, value); }
     public bool IsDirty => !StringComparer.OrdinalIgnoreCase.Equals(savedSettings.LibraryRoot.Trim(), LibraryRoot.Trim());
     public bool CanRescan => !IsDirty && SettingsValidator.Validate(Current).IsValid;
-    public LibrarySettings Current => new(LibraryRoot.Trim(), SortMode, InventoryFilter);
+    public UnrealImportPackageSettings UnrealImportPackageSettings => savedSettings.UnrealImportPackageOrDefault;
+    public LibrarySettings Current => new(LibraryRoot.Trim(), SortMode, InventoryFilter, savedSettings.UnrealImportPackageOrDefault);
 
     public async Task LoadAsync(CancellationToken cancellationToken)
     {
@@ -45,6 +46,7 @@ public sealed class SettingsViewModel(ISettingsStore store) : ObservableObject
         SortMode = savedSettings.SortMode;
         InventoryFilter = savedSettings.InventoryFilter;
         LibraryRoot = savedSettings.LibraryRoot;
+        OnPropertyChanged(nameof(UnrealImportPackageSettings));
         OnPropertyChanged(nameof(IsDirty));
         OnPropertyChanged(nameof(CanRescan));
     }
@@ -55,12 +57,16 @@ public sealed class SettingsViewModel(ISettingsStore store) : ObservableObject
     public Task SaveInventoryFilterAsync(AssetInventoryFilter value, CancellationToken cancellationToken) =>
         SaveNavigationAsync(savedSettings with { InventoryFilter = value }, cancellationToken);
 
+    public Task SaveUnrealImportPackageSettingsAsync(UnrealImportPackageSettings value, CancellationToken cancellationToken) =>
+        SaveNavigationAsync(savedSettings with { UnrealImportPackage = value }, cancellationToken);
+
     private async Task SaveNavigationAsync(LibrarySettings updated, CancellationToken cancellationToken)
     {
         await store.SaveAsync(updated, cancellationToken);
         savedSettings = updated;
         SortMode = updated.SortMode;
         InventoryFilter = updated.InventoryFilter;
+        OnPropertyChanged(nameof(UnrealImportPackageSettings));
         OnPropertyChanged(nameof(IsDirty));
         OnPropertyChanged(nameof(CanRescan));
     }

@@ -64,6 +64,22 @@ public interface ISmartCollectionStore
     Task SaveAsync(IReadOnlyList<SmartCollectionRecord> collections, CancellationToken cancellationToken);
 }
 
+/// <summary>Persists user-defined Unreal import material profiles outside the asset index.</summary>
+public interface IUnrealMaterialProfileStore
+{
+    Task<IReadOnlyList<UnrealMaterialProfile>> LoadUserProfilesAsync(CancellationToken cancellationToken);
+    Task SaveUserProfilesAsync(IReadOnlyList<UnrealMaterialProfile> profiles, CancellationToken cancellationToken);
+}
+
+public interface IUnrealImportPackageExportService
+{
+    string Serialize(UnrealImportPackage package);
+    Task<UnrealImportPackageExportResult> ExportAsync(
+        UnrealImportPackage package,
+        string destinationPath,
+        CancellationToken cancellationToken);
+}
+
 /// <summary>Coordinates a complete, cancellable library refresh.</summary>
 public interface ILibraryScanService
 {

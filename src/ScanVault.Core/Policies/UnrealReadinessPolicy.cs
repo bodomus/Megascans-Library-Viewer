@@ -104,7 +104,7 @@ public static class UnrealReadinessPolicy
         bool requiresBillboard)
     {
         var meshes = asset.Content.Variants.SelectMany(static variant => variant.Meshes).OrderBy(static mesh => mesh.Lod).ThenBy(static mesh => mesh.Path, Comparer).ToArray();
-        var primary = PrimarySet(asset.Content, [TextureSetKind.General, TextureSetKind.Unknown, TextureSetKind.Atlas]);
+        var primary = AssetContentSelectionPolicy.SelectPrimaryTextureSet(asset.Content, [TextureSetKind.General, TextureSetKind.Unknown, TextureSetKind.Atlas]);
         if (meshes.Length == 0)
         {
             if (asset.Content.HasBillboard)
@@ -154,7 +154,7 @@ public static class UnrealReadinessPolicy
         bool requiresOpacity,
         bool requiresNormalBlocking)
     {
-        var primary = PrimarySet(asset.Content, allowedKinds);
+        var primary = AssetContentSelectionPolicy.SelectPrimaryTextureSet(asset.Content, allowedKinds);
         if (primary is null)
         {
             reasons.Add(Blocking(UnrealReadinessRuleCode.UeNoPrimaryTextureSet,
@@ -273,14 +273,6 @@ public static class UnrealReadinessPolicy
 
         reasons.Add(new(code, severity, message, RelatedSet(primary)));
     }
-
-    private static TextureSetInventory? PrimarySet(AssetContentInventory content, IReadOnlyList<TextureSetKind> kinds) =>
-        content.TextureSets
-            .Where(set => kinds.Contains(set.Kind) && set.Components.Count > 0)
-            .OrderByDescending(static set => set.Resolution ?? set.Components.Select(static component => component.Resolution).DefaultIfEmpty().Max() ?? 0)
-            .ThenBy(static set => set.Kind)
-            .ThenBy(static set => RelatedSet(set), Comparer)
-            .FirstOrDefault();
 
     private static UnrealReadinessEvaluation Create(
         UnrealReadinessStatus status,

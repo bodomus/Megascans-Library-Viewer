@@ -19,6 +19,7 @@ public sealed class ViewModelTests : IDisposable
 
     public ViewModelTests() => Directory.CreateDirectory(root);
 
+    // Unit test: settings save gates rescans and persists sort preferences.
     [Fact]
     public async Task SettingsRequireExplicitSaveBeforeRescanAndPersistSort()
     {
@@ -40,6 +41,7 @@ public sealed class ViewModelTests : IDisposable
         Assert.Equal(AssetSortMode.ResolutionDescending, store.Value.SortMode);
     }
 
+    // Unit test: main catalog composition preserves folder, search, sort, and selection behavior.
     [Fact]
     public async Task MainViewModelComposesFolderSearchSortAndPreservesSelection()
     {
@@ -80,6 +82,7 @@ public sealed class ViewModelTests : IDisposable
         Assert.Equal(nature, interactions.CopiedText);
     }
 
+    // Unit test: inventory filter command toggles the complete content-filter set.
     [Fact]
     public async Task CheckAllInventoryFilterTogglesEveryContentFilter()
     {
@@ -105,6 +108,7 @@ public sealed class ViewModelTests : IDisposable
         Assert.Equal(AssetInventoryFilter.None, viewModel.InventoryFilter);
         Assert.Equal(AssetInventoryFilter.None, settingsStore.Value.InventoryFilter);
     }
+    // Unit test: index compatibility state controls status messaging and rescan availability.
     [Theory]
     [InlineData(IndexCompatibilityState.Missing, true, "No index exists")]
     [InlineData(IndexCompatibilityState.NewerVersionUnsupported, false, "newer ScanVault version")]
@@ -128,6 +132,7 @@ public sealed class ViewModelTests : IDisposable
         Assert.Equal(canWrite, viewModel.RescanCommand.CanExecute(null));
     }
 
+    // Unit test: asset card display fields handle normalized metadata and missing optional rows.
     [Fact]
     public async Task CardFormatsNormalizedHierarchyAndOmitsMissingRows()
     {
@@ -153,6 +158,7 @@ public sealed class ViewModelTests : IDisposable
         Assert.Equal("ExactCase", interactions.CopiedText);
     }
 
+    // Unit test: preview state can open and close without loading an image.
     [Fact]
     public async Task PreviewStateOpensAndClosesWithoutRequiringAnImage()
     {
@@ -169,6 +175,7 @@ public sealed class ViewModelTests : IDisposable
     }
 
 
+    // Unit test: main view model disposal is idempotent.
     [Fact]
     public async Task ViewModelDisposeCanRunMoreThanOnce()
     {
@@ -181,6 +188,7 @@ public sealed class ViewModelTests : IDisposable
         viewModel.Dispose();
     }
 
+    // Unit test: preview disposal is idempotent after an open operation.
     [Fact]
     public async Task PreviewDisposeCanRunMoreThanOnceAfterLoading()
     {
@@ -193,6 +201,7 @@ public sealed class ViewModelTests : IDisposable
         preview.Dispose();
     }
 
+    // Unit test: asset card disposal is idempotent after thumbnail loading.
     [Fact]
     public async Task AssetCardDisposeCanRunMoreThanOnceAfterThumbnailLoad()
     {
@@ -211,6 +220,7 @@ public sealed class ViewModelTests : IDisposable
         card.Dispose();
     }
 
+    // Unit test: comparison tray preserves selection and rotates the third asset deterministically.
     [Fact]
     public async Task ComparisonTrayPreservesSingleSelectionAndUsesFifoForThirdAsset()
     {
@@ -250,6 +260,7 @@ public sealed class ViewModelTests : IDisposable
         requested.Dispose();
     }
 
+    // Unit test: duplicate analysis routes open-file and open-folder actions to distinct targets.
     [Fact]
     public async Task DuplicateAnalysisOpenAssetAndFolderUseDistinctTargets()
     {
@@ -275,6 +286,7 @@ public sealed class ViewModelTests : IDisposable
         Assert.Equal(asset.AssetFolderPath, interactions.OpenedFolder);
     }
 
+    // Regression test: duplicate comparison resolves same-ID members by physical JSON path.
     [Fact]
     public async Task DuplicateAnalysisCompareResolvesSameIdMembersByJsonPath()
     {
@@ -332,6 +344,8 @@ public sealed class ViewModelTests : IDisposable
             settingsStore,
             new MemorySmartCollectionStore(),
             new NoOpReportExportService(),
+            new MemoryUnrealMaterialProfileStore(),
+            new NoOpUnrealImportPackageExportService(),
             new NoOpDuplicateAnalysisService(),
             new NullImageLoader(),
             interactions,
@@ -526,6 +540,31 @@ public sealed class ViewModelTests : IDisposable
         public Task<ReportExportResult> ExportAsync(ReportExportRequest request, IProgress<ReportProgress>? progress,
             CancellationToken cancellationToken) =>
             Task.FromResult(new ReportExportResult(request.DestinationPath, null, request.Assets.Count, 0, 0, TimeSpan.Zero));
+    }
+
+    private sealed class MemoryUnrealMaterialProfileStore : IUnrealMaterialProfileStore
+    {
+        public IReadOnlyList<UnrealMaterialProfile> Profiles { get; private set; } = [];
+
+        public Task<IReadOnlyList<UnrealMaterialProfile>> LoadUserProfilesAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(Profiles);
+
+        public Task SaveUserProfilesAsync(IReadOnlyList<UnrealMaterialProfile> profiles, CancellationToken cancellationToken)
+        {
+            Profiles = profiles.ToArray();
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class NoOpUnrealImportPackageExportService : IUnrealImportPackageExportService
+    {
+        public string Serialize(UnrealImportPackage package) => "{}";
+
+        public Task<UnrealImportPackageExportResult> ExportAsync(
+            UnrealImportPackage package,
+            string destinationPath,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(new UnrealImportPackageExportResult(destinationPath, 0));
     }
 
     private sealed class NoOpDuplicateAnalysisService : IDuplicateAnalysisService

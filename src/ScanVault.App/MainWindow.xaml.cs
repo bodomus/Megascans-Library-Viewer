@@ -346,6 +346,7 @@ public partial class MainWindow : Window
             subscribedViewModel.Preview.PropertyChanged -= OnPreviewPropertyChanged;
             subscribedViewModel.AssetComparisonRequested -= OnAssetComparisonRequested;
             subscribedViewModel.ContentInventoryRequested -= OnContentInventoryRequested;
+            subscribedViewModel.UnrealImportPackageRequested -= OnUnrealImportPackageRequested;
         }
 
         subscribedViewModel = e.NewValue as MainViewModel;
@@ -354,6 +355,7 @@ public partial class MainWindow : Window
             subscribedViewModel.Preview.PropertyChanged += OnPreviewPropertyChanged;
             subscribedViewModel.AssetComparisonRequested += OnAssetComparisonRequested;
             subscribedViewModel.ContentInventoryRequested += OnContentInventoryRequested;
+            subscribedViewModel.UnrealImportPackageRequested += OnUnrealImportPackageRequested;
         }
     }
 
@@ -374,6 +376,15 @@ public partial class MainWindow : Window
             DataContext = viewModel
         };
         window.Show();
+    }
+    private void OnUnrealImportPackageRequested(UnrealImportPackageViewModel viewModel)
+    {
+        var window = new UnrealImportPackageWindow
+        {
+            Owner = this,
+            DataContext = viewModel
+        };
+        window.ShowDialog();
     }
     private void OnPreviewPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -404,6 +415,7 @@ public partial class MainWindow : Window
             subscribedViewModel.Preview.PropertyChanged -= OnPreviewPropertyChanged;
             subscribedViewModel.AssetComparisonRequested -= OnAssetComparisonRequested;
             subscribedViewModel.ContentInventoryRequested -= OnContentInventoryRequested;
+            subscribedViewModel.UnrealImportPackageRequested -= OnUnrealImportPackageRequested;
         }
     }
 }

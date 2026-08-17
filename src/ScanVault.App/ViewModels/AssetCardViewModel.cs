@@ -28,6 +28,7 @@ public sealed class AssetCardViewModel : ObservableObject, IDisposable
         ILogger<AssetCardViewModel> logger,
         Action<AssetSummary>? showInventory = null,
         Action<AssetSummary>? addToComparison = null,
+        Action<AssetSummary>? createUnrealImportPackage = null,
         bool selectedForComparison = false)
     {
         Asset = asset;
@@ -35,6 +36,7 @@ public sealed class AssetCardViewModel : ObservableObject, IDisposable
         OpenPreviewCommand = new AsyncRelayCommand(_ => openPreview(asset));
         ShowContentInventoryCommand = new RelayCommand(() => showInventory?.Invoke(asset), () => showInventory is not null);
         AddToComparisonCommand = new RelayCommand(() => addToComparison?.Invoke(asset), () => addToComparison is not null);
+        CreateUnrealImportPackageCommand = new RelayCommand(() => createUnrealImportPackage?.Invoke(asset), () => createUnrealImportPackage is not null);
         OpenFolderCommand = CreateActionCommand("Open folder", () => interactions.OpenFolder(asset.AssetFolderPath), "Opened asset folder.", reportStatus, logger);
         CopyAssetIdCommand = CreateActionCommand("Copy asset ID", () => interactions.CopyText(asset.Id), "Asset ID copied.", reportStatus, logger);
         CopyFolderPathCommand = CreateActionCommand("Copy folder path", () => interactions.CopyText(asset.AssetFolderPath), "Asset folder path copied.", reportStatus, logger);
@@ -154,6 +156,7 @@ public sealed class AssetCardViewModel : ObservableObject, IDisposable
     public ICommand OpenPreviewCommand { get; }
     public ICommand ShowContentInventoryCommand { get; }
     public ICommand AddToComparisonCommand { get; }
+    public ICommand CreateUnrealImportPackageCommand { get; }
     public ICommand OpenFolderCommand { get; }
     public ICommand CopyAssetIdCommand { get; }
     public ICommand CopyFolderPathCommand { get; }
@@ -278,4 +281,3 @@ public sealed class AssetCardViewModel : ObservableObject, IDisposable
         }
     });
 }
-

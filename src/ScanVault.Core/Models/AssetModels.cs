@@ -44,7 +44,10 @@ public sealed record AssetSummary(
 public sealed record LibrarySettings(
     string LibraryRoot,
     AssetSortMode SortMode = AssetSortMode.NameAscending,
-    AssetInventoryFilter InventoryFilter = AssetInventoryFilter.None)
+    AssetInventoryFilter InventoryFilter = AssetInventoryFilter.None,
+    UnrealImportPackageSettings? UnrealImportPackage = null)
 {
     public static LibrarySettings Empty { get; } = new(string.Empty);
+    [System.Text.Json.Serialization.JsonIgnore]
+    public UnrealImportPackageSettings UnrealImportPackageOrDefault => UnrealImportPackage ?? UnrealImportPackageSettings.Default;
 }

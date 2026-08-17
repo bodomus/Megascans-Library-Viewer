@@ -34,9 +34,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly ILogger<DiagnosticsViewModel> diagnosticsLogger;
     private readonly ILogger<ScanHistoryViewModel> scanHistoryLogger;
     private readonly ILogger<ExportReportViewModel> exportReportLogger;
+    private readonly ILogger<UnrealImportPackageViewModel> unrealImportPackageLogger;
     private readonly ILogger<AssetComparisonViewModel> assetComparisonLogger;
     private readonly ILogger<DuplicateAnalysisViewModel> duplicateAnalysisLogger;
     private readonly IReportExportService reportExportService;
+    private readonly IUnrealMaterialProfileStore unrealMaterialProfileStore;
+    private readonly IUnrealImportPackageExportService unrealImportPackageExportService;
     private readonly IDuplicateAnalysisService duplicateAnalysisService;
     private readonly ApplicationBuildInfo buildInfo;
     private IReadOnlyList<AssetSummary> allAssets = [];
@@ -69,6 +72,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ISettingsStore settingsStore,
         ISmartCollectionStore smartCollectionStore,
         IReportExportService reportExportService,
+        IUnrealMaterialProfileStore unrealMaterialProfileStore,
+        IUnrealImportPackageExportService unrealImportPackageExportService,
         IDuplicateAnalysisService duplicateAnalysisService,
         IImageLoader imageLoader,
         IAssetInteractionService interactions,
@@ -84,6 +89,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         this.diagnosticsService = diagnosticsService;
         this.smartCollectionStore = smartCollectionStore;
         this.reportExportService = reportExportService;
+        this.unrealMaterialProfileStore = unrealMaterialProfileStore;
+        this.unrealImportPackageExportService = unrealImportPackageExportService;
         this.duplicateAnalysisService = duplicateAnalysisService;
         this.buildInfo = buildInfo;
         this.logger = logger;
@@ -92,6 +99,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         scanHistoryLogger = loggerFactory.CreateLogger<ScanHistoryViewModel>();
         Settings = new(settingsStore);
         exportReportLogger = loggerFactory.CreateLogger<ExportReportViewModel>();
+        unrealImportPackageLogger = loggerFactory.CreateLogger<UnrealImportPackageViewModel>();
         assetComparisonLogger = loggerFactory.CreateLogger<AssetComparisonViewModel>();
         duplicateAnalysisLogger = loggerFactory.CreateLogger<DuplicateAnalysisViewModel>();
         WindowTitle = buildInfo.WindowTitle;
@@ -113,6 +121,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             () => SelectedCard is not null);
         AddSelectedToComparisonCommand = new RelayCommand(
             () => { if (SelectedCard is not null) AddToComparison(SelectedCard.Asset); },
+            () => SelectedCard is not null);
+        CreateUnrealImportPackageCommand = new RelayCommand(
+            () => { if (SelectedCard is not null) RequestUnrealImportPackage(SelectedCard.Asset); },
             () => SelectedCard is not null);
         OpenComparisonCommand = new RelayCommand(OpenComparison, () => CanOpenComparison);
         ClearComparisonCommand = new RelayCommand(ClearComparison, () => ComparisonCount > 0);
@@ -175,6 +186,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public RelayCommand CopySelectedFolderCommand { get; }
     public AsyncRelayCommand ToggleHasFbxCommand { get; }
     public RelayCommand AddSelectedToComparisonCommand { get; }
+    public RelayCommand CreateUnrealImportPackageCommand { get; }
     public RelayCommand OpenComparisonCommand { get; }
     public RelayCommand ClearComparisonCommand { get; }
     public AsyncRelayCommand ToggleHasLodsCommand { get; }
@@ -204,6 +216,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public RelayCommand ResetSmartCollectionCommand { get; }
     public event Action<ContentInventoryViewModel>? ContentInventoryRequested;
     public event Action<AssetComparisonViewModel>? AssetComparisonRequested;
+    public event Action<UnrealImportPackageViewModel>? UnrealImportPackageRequested;
     public string ComparisonLeftName => comparisonLeft?.Name ?? "Select first asset";
     public string ComparisonRightName => comparisonRight?.Name ?? "Select second asset";
     public int ComparisonCount => (comparisonLeft is null ? 0 : 1) + (comparisonRight is null ? 0 : 1);
@@ -334,6 +347,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 OpenSelectedPreviewCommand.NotifyCanExecuteChanged();
                 CopySelectedFolderCommand.NotifyCanExecuteChanged();
                 AddSelectedToComparisonCommand.NotifyCanExecuteChanged();
+                CreateUnrealImportPackageCommand.NotifyCanExecuteChanged();
             }
         }
     }
@@ -1054,6 +1068,21 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         return viewModel;
     }
 
+    public async Task<UnrealImportPackageViewModel> CreateUnrealImportPackageViewModelAsync(
+        AssetSummary asset,
+        CancellationToken cancellationToken)
+    {
+        var viewModel = new UnrealImportPackageViewModel(
+            asset,
+            unrealMaterialProfileStore,
+            unrealImportPackageExportService,
+            Settings,
+            buildInfo,
+            unrealImportPackageLogger);
+        await viewModel.LoadAsync(cancellationToken);
+        return viewModel;
+    }
+
     public async Task<DiagnosticsViewModel> CreateDiagnosticsViewModelAsync(
         CancellationToken cancellationToken)
     {
@@ -1258,6 +1287,19 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     }
     private void RequestContentInventory(AssetSummary asset) =>
         ContentInventoryRequested?.Invoke(new ContentInventoryViewModel(asset, interactions, logger));
+    private async void RequestUnrealImportPackage(AssetSummary asset)
+    {
+        try
+        {
+            UnrealImportPackageRequested?.Invoke(await CreateUnrealImportPackageViewModelAsync(asset, CancellationToken.None));
+        }
+        catch (Exception exception)
+        {
+            ApplicationLog.AssetActionFailed(logger, "Create UE Import Package", asset.Id, exception);
+            StatusText = $"Create UE Import Package failed: {exception.Message}";
+        }
+    }
+
     private void AddToComparison(AssetSummary asset)
     {
         if (StringComparer.OrdinalIgnoreCase.Equals(comparisonLeft?.Id, asset.Id) ||
@@ -1461,6 +1503,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 cardLogger,
                 RequestContentInventory,
                 AddToComparison,
+                RequestUnrealImportPackage,
                 StringComparer.OrdinalIgnoreCase.Equals(asset.Id, comparisonLeft?.Id) ||
                 StringComparer.OrdinalIgnoreCase.Equals(asset.Id, comparisonRight?.Id));
             Assets.Add(card);

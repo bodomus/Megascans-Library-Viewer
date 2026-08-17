@@ -6,6 +6,7 @@ using ScanVault.Infrastructure.Persistence;
 using ScanVault.Infrastructure.Reporting;
 using ScanVault.Infrastructure.Scanning;
 using ScanVault.Infrastructure.Settings;
+using ScanVault.Infrastructure.UnrealImport;
 
 namespace ScanVault.Infrastructure;
 
@@ -22,6 +23,8 @@ public static class DependencyInjection
         services.AddSingleton<IAssetIndex, SqliteAssetIndex>();
         services.AddSingleton<ISettingsStore, JsonSettingsStore>();
         services.AddSingleton<ISmartCollectionStore, JsonSmartCollectionStore>();
+        services.AddSingleton<IUnrealMaterialProfileStore, JsonUnrealMaterialProfileStore>();
+        services.AddSingleton<IUnrealImportPackageExportService, UnrealImportPackageExportService>();
         services.AddSingleton<IReportWriter, CsvReportWriter>();
         services.AddSingleton<IReportWriter, JsonReportWriter>();
         services.AddSingleton<IReportWriter, MarkdownReportWriter>();
