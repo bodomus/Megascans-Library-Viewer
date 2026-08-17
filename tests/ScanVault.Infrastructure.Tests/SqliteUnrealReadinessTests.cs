@@ -11,6 +11,7 @@ namespace ScanVault.Infrastructure.Tests;
 
 public sealed class SqliteUnrealReadinessTests
 {
+    // Regression test: protects against stale current-version readiness being persisted after inventory changes.
     [Fact]
     public async Task ReplacementRecomputesCurrentVersionReadinessFromChangedInventory()
     {
@@ -27,6 +28,7 @@ public sealed class SqliteUnrealReadinessTests
         Assert.Contains(saved.UnrealReadiness.Reasons, static reason => reason.RuleCode == UnrealReadinessRuleCode.UeMissingMesh);
     }
 
+    // Regression test: protects MLV-12 duplicate-analysis source snapshots from stale readiness.
     [Fact]
     public async Task ReplacementRecomputesDuplicateAnalysisSourcesFromChangedInventory()
     {
@@ -48,6 +50,7 @@ public sealed class SqliteUnrealReadinessTests
         Assert.Contains(saved.UnrealReadiness.Reasons, static reason => reason.RuleCode == UnrealReadinessRuleCode.UeMissingMesh);
     }
 
+    // Migration test: verifies SQLite v6 to v7 preserves rows as stale Unknown readiness.
     [Fact]
     public async Task VersionSixMigrationPreservesRowsAsStaleUnknownAndRemainsWritable()
     {
@@ -81,6 +84,7 @@ public sealed class SqliteUnrealReadinessTests
         Assert.Equal("current", Assert.Single(await reopened.GetAssetsAsync(CancellationToken.None)).Id);
     }
 
+    // Persistence test: verifies readiness survives reopening the SQLite index.
     [Fact]
     public async Task SuccessfulReplacementPersistsReadinessAcrossRestart()
     {
@@ -100,6 +104,7 @@ public sealed class SqliteUnrealReadinessTests
         Assert.NotNull(saved.UnrealReadiness.EvaluatedAtUtc);
     }
 
+    // Persistence test: verifies a failed replacement rolls back readiness changes.
     [Fact]
     public async Task FailedReplacementPreservesPreviousReadiness()
     {
@@ -120,6 +125,7 @@ public sealed class SqliteUnrealReadinessTests
         Assert.Equal(UnrealReadinessStatus.Ready, saved.UnrealReadiness.Status);
     }
 
+    // Persistence test: verifies a cancelled replacement rolls back readiness changes.
     [Fact]
     public async Task CancelledReplacementPreservesPreviousReadiness()
     {
@@ -141,6 +147,7 @@ public sealed class SqliteUnrealReadinessTests
         Assert.Equal(UnrealReadinessStatus.Ready, saved.UnrealReadiness.Status);
     }
 
+    // Diagnostics test: verifies stale rule-version readiness is reported and refreshed.
     [Fact]
     public async Task StaleRuleVersionIsReportedAndSuccessfulReplacementRefreshesIt()
     {
@@ -168,6 +175,7 @@ public sealed class SqliteUnrealReadinessTests
         Assert.Equal(UnrealReadinessPolicy.CurrentRuleVersion, refreshed.UnrealReadiness.ReadinessRuleVersion);
     }
 
+    // History test: verifies readiness changes are recorded without timestamp-only noise.
     [Fact]
     public async Task ReadinessHistoryChangesAreRecordedButEvaluationTimestampIsStable()
     {
@@ -187,6 +195,7 @@ public sealed class SqliteUnrealReadinessTests
         Assert.Empty(await index.GetScanChangesAsync(thirdRun, AssetChangeKind.Changed, 10, CancellationToken.None));
     }
 
+    // Integration test: verifies deterministic mixed-status batch persistence and diagnostics counts.
     [Fact]
     public async Task DeterministicBatchPersistsMixedReadinessCounts()
     {
