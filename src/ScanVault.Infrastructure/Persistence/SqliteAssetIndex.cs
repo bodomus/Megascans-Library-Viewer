@@ -177,7 +177,7 @@ public sealed partial class SqliteAssetIndex(
                 .Select(asset =>
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    return UnrealReadinessPolicy.EnsureCurrent(asset, evaluatedAtUtc);
+                    return asset with { UnrealReadiness = UnrealReadinessPolicy.Evaluate(asset, evaluatedAtUtc) };
                 })
                 .ToArray();
             readinessStopwatch.Stop();
@@ -268,7 +268,13 @@ public sealed partial class SqliteAssetIndex(
                     connection,
                     transaction,
                     libraryRoot,
-                    draftResult.DuplicateAnalysisSources.Count == 0 ? assetsToPersist : draftResult.DuplicateAnalysisSources.Select(asset => UnrealReadinessPolicy.EnsureCurrent(asset, evaluatedAtUtc)).ToArray(),
+                    draftResult.DuplicateAnalysisSources.Count == 0
+                        ? assetsToPersist
+                        : draftResult.DuplicateAnalysisSources.Select(asset =>
+                        {
+                            cancellationToken.ThrowIfCancellationRequested();
+                            return asset with { UnrealReadiness = UnrealReadinessPolicy.Evaluate(asset, evaluatedAtUtc) };
+                        }).ToArray(),
                     assetsToPersist,
                     scanRunId,
                     cancellationToken)
