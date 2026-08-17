@@ -1,0 +1,4 @@
+interface:
+  display_name: "ScanVault Test Comments"
+  short_description: "Require test-method classification comments in ScanVault tests."
+  default_prompt: "When editing ScanVault test files, add a short comment before each test method that names the test kind."
