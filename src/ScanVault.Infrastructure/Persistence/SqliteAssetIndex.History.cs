@@ -329,6 +329,7 @@ public sealed partial class SqliteAssetIndex
         if (previous.Completeness != current.Completeness) flags |= AssetChangeReason.Completeness;
         if (!EqualityComparer<ImageResolution?>.Default.Equals(previous.Summary.MaxResolution, current.Summary.MaxResolution)) flags |= AssetChangeReason.Resolution;
         if (!StringComparer.Ordinal.Equals(previous.Summary.InventoryJson, current.Summary.InventoryJson)) flags |= AssetChangeReason.Inventory;
+        if (!StringComparer.Ordinal.Equals(previous.Summary.ReadinessJson, current.Summary.ReadinessJson)) flags |= AssetChangeReason.Readiness;
         if (!StringComparer.Ordinal.Equals(previous.Summary.FilesJson, current.Summary.FilesJson)) flags |= AssetChangeReason.Files;
         if (!StringComparer.Ordinal.Equals(previous.Summary.MetadataJson, current.Summary.MetadataJson) || !StringComparer.Ordinal.Equals(previous.Fingerprint, current.Fingerprint) && flags == AssetChangeReason.None) flags |= AssetChangeReason.Metadata;
         return flags;
@@ -430,7 +431,7 @@ public sealed partial class SqliteAssetIndex
 
     private sealed record HistoryBuildResult(string LibraryIdentity, bool IsInitialBaseline, IReadOnlyList<AssetSnapshot> Snapshots, IReadOnlyList<AssetChangeRow> Changes, int Added, int Changed, int Removed, int Unchanged);
     private sealed record AssetSnapshot(string ScanRunId, string AssetIdentity, string AssetId, string Name, string AssetType, string? CurrentPath, AssetCompletenessStatus Completeness, string Fingerprint, int FingerprintVersion, AssetSnapshotSummary Summary);
-    private sealed record AssetSnapshotSummary(string AssetId, string Name, string AssetType, string? RawAssetType, string? AssetFolderPath, string? JsonPath, ImageResolution? MaxResolution, string MetadataJson, string InventoryJson, string FilesJson, AssetCompletenessStatus Completeness)
+    private sealed record AssetSnapshotSummary(string AssetId, string Name, string AssetType, string? RawAssetType, string? AssetFolderPath, string? JsonPath, ImageResolution? MaxResolution, string MetadataJson, string InventoryJson, string FilesJson, AssetCompletenessStatus Completeness, string? ReadinessJson = null)
     {
         public static AssetSnapshotSummary Empty { get; } = new(string.Empty, string.Empty, string.Empty, null, null, null, null, string.Empty, string.Empty, string.Empty, AssetCompletenessStatus.Unknown);
         public static AssetSnapshotSummary FromAsset(string libraryRoot, AssetSummary asset)
@@ -452,8 +453,19 @@ public sealed partial class SqliteAssetIndex
                 asset.LastWriteTimeUtc
             });
             var inventory = JsonSerializer.Serialize(asset.Content);
+            var readiness = JsonSerializer.Serialize(new
+            {
+                asset.UnrealReadiness.Status,
+                asset.UnrealReadiness.ReadinessRuleVersion,
+                asset.UnrealReadiness.BlockingCount,
+                asset.UnrealReadiness.WarningCount,
+                Reasons = asset.UnrealReadiness.Reasons
+                    .OrderBy(static reason => reason.Code, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(static reason => reason.RelatedInventoryItem, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(static reason => reason.Message, StringComparer.OrdinalIgnoreCase)
+            });
             var files = JsonSerializer.Serialize(CollectFileFacts(libraryRoot, asset));
-            return new(asset.Id, asset.Name, asset.AssetType, asset.RawAssetType, NormalizeRelativePath(libraryRoot, asset.AssetFolderPath), NormalizeRelativePath(libraryRoot, asset.JsonPath), asset.MaxResolution, metadata, inventory, files, asset.Content.Completeness);
+            return new(asset.Id, asset.Name, asset.AssetType, asset.RawAssetType, NormalizeRelativePath(libraryRoot, asset.AssetFolderPath), NormalizeRelativePath(libraryRoot, asset.JsonPath), asset.MaxResolution, metadata, inventory, files, asset.Content.Completeness, readiness);
         }
     }
     private sealed record FileFact(string RelativePath, long? Size, string? LastWriteUtc);

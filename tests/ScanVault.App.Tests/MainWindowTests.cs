@@ -68,7 +68,7 @@ public sealed class MainWindowTests
 
                 var diagnosticsList = Assert.IsType<ListBox>(
                     FindVisualChild<ListBox>(diagnosticsWindow));
-                Assert.Equal(23, diagnosticsList.Items.Count);
+                Assert.Equal(31, diagnosticsList.Items.Count);
                 Assert.Equal("About / Diagnostics \u2014 ScanVault 9.8.7", diagnosticsWindow.Title);
                 contentWindow = new()
                 {
@@ -81,7 +81,7 @@ public sealed class MainWindowTests
                 contentWindow.Show();
                 contentWindow.UpdateLayout();
                 var contentTabs = Assert.IsType<TabControl>(FindVisualChild<TabControl>(contentWindow));
-                Assert.Equal(4, contentTabs.Items.Count);
+                Assert.Equal(5, contentTabs.Items.Count);
                 var leftAsset = CreateAsset() with { Id = "comparison-left", Name = "Comparison Left" };
                 var rightAsset = CreateAsset() with { Id = "comparison-right", Name = "Comparison Right" };
                 comparisonWindow = new()

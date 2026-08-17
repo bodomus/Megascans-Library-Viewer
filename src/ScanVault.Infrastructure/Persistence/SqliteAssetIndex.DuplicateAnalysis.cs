@@ -290,6 +290,32 @@ public sealed partial class SqliteAssetIndex
         }
     }
 
+    private static async Task MigrateVersionSixAsync(SqliteConnection connection, CancellationToken cancellationToken)
+    {
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await ExecuteAsync(connection, transaction, """
+                ALTER TABLE assets ADD COLUMN readiness_json TEXT NOT NULL
+                    DEFAULT '{"Status":4,"ReadinessRuleVersion":0,"Reasons":[],"EvaluatedAtUtc":null}';
+                ALTER TABLE assets ADD COLUMN readiness_status INTEGER NOT NULL DEFAULT 4;
+                ALTER TABLE assets ADD COLUMN readiness_rule_version INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE assets ADD COLUMN readiness_blocking_count INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE assets ADD COLUMN readiness_warning_count INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE assets ADD COLUMN readiness_evaluated_at_utc TEXT NULL;
+                CREATE INDEX ix_assets_readiness_status ON assets(readiness_status);
+                CREATE INDEX ix_assets_readiness_rule_version ON assets(readiness_rule_version);
+                UPDATE schema_info SET version = 7;
+                """, cancellationToken).ConfigureAwait(false);
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None).ConfigureAwait(false);
+            throw;
+        }
+    }
+
     private static async Task CreateDuplicateAnalysisTablesAsync(
         SqliteConnection connection,
         SqliteTransaction transaction,

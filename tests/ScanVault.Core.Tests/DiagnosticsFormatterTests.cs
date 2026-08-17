@@ -35,6 +35,14 @@ public sealed class DiagnosticsFormatterTests
             "Index compatibility state",
             "Rescan required",
             "Compatibility guidance",
+            "UE readiness rule version",
+            "Last UE readiness evaluation",
+            "UE ready asset count",
+            "UE ready with warnings count",
+            "UE not ready asset count",
+            "UE unknown asset count",
+            "UE not applicable asset count",
+            "UE readiness recalculation required",
             "Settings file path",
             "Current sort mode",
             "Current selected folder"
@@ -44,6 +52,7 @@ public sealed class DiagnosticsFormatterTests
         Assert.Contains("Last successful scan: 2026-07-27 15:30:12 +00:00", text, StringComparison.Ordinal);
         Assert.Contains("Last scan duration: 00:00:12.3450000", text, StringComparison.Ordinal);
         Assert.Contains("Rescan required: Yes", text, StringComparison.Ordinal);
+        Assert.Contains("UE readiness recalculation required: No", text, StringComparison.Ordinal);
     }
 
     [Fact]

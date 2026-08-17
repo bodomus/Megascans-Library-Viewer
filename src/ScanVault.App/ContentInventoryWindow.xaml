@@ -15,9 +15,22 @@
             <StackPanel Orientation="Horizontal">
                 <TextBlock Text="{Binding AssetId, StringFormat=ID: {0}}" Foreground="{StaticResource TextSecondary}" />
                 <TextBlock Text="{Binding Status, StringFormat=  Status: {0}}" Foreground="{StaticResource Accent}" />
+                <TextBlock Text="{Binding UnrealReadinessStatus, StringFormat=  UE: {0}}" Foreground="{StaticResource Accent}" />
             </StackPanel>
         </StackPanel>
         <TabControl Grid.Row="1" Margin="0,12,0,12" Foreground="{StaticResource TextDarkPrimary}">
+            <TabItem Header="UE readiness">
+                <Grid Background="White" Margin="0">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                    <StackPanel Margin="8">
+                        <TextBlock Text="{Binding UnrealReadinessStatus, StringFormat=Status: {0}}" Foreground="{StaticResource TextDarkPrimary}" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding UnrealReadinessBlockingCount, StringFormat=Blocking issues: {0}}" Foreground="{StaticResource TextDarkPrimary}" />
+                        <TextBlock Text="{Binding UnrealReadinessWarningCount, StringFormat=Warnings: {0}}" Foreground="{StaticResource TextDarkPrimary}" />
+                        <TextBlock Text="{Binding UnrealReadinessRuleVersion, StringFormat=Rule version: {0}}" Foreground="{StaticResource TextDarkPrimary}" />
+                    </StackPanel>
+                    <ListBox Grid.Row="1" ItemsSource="{Binding UnrealReadinessReasonLines}" Background="White" Foreground="{StaticResource TextDarkPrimary}" Margin="6" />
+                </Grid>
+            </TabItem>
             <TabItem Header="Variants and LODs">
                 <ListBox ItemsSource="{Binding VariantLines}" Background="White" Foreground="{StaticResource TextDarkPrimary}" />
             </TabItem>

@@ -36,7 +36,17 @@ public sealed record AssetContentInventory(
 public enum AssetInventoryFilter
 {
     None = 0, HasFbx = 1 << 0, HasLods = 1 << 1, HasBillboard = 1 << 2,
-    HasAtlas = 1 << 3, Complete = 1 << 4, Incomplete = 1 << 5, Ambiguous = 1 << 6
+    HasAtlas = 1 << 3, Complete = 1 << 4, Incomplete = 1 << 5, Ambiguous = 1 << 6,
+    UnrealReady = 1 << 7,
+    UnrealReadyWithWarnings = 1 << 8,
+    UnrealNotReady = 1 << 9,
+    UnrealUnknown = 1 << 10,
+    UnrealNotApplicable = 1 << 11,
+    UnrealMissingMesh = 1 << 12,
+    UnrealMissingNormal = 1 << 13,
+    UnrealMissingLods = 1 << 14,
+    UnrealBlockingIssues = 1 << 15,
+    UnrealWarnings = 1 << 16
 }
 
 public sealed record AssetContentFileCandidate(string FullPath, string RelativePath);

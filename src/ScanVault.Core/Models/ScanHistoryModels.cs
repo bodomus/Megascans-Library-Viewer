@@ -25,7 +25,8 @@ public enum AssetChangeReason
     Resolution = 1 << 2,
     Inventory = 1 << 3,
     Files = 1 << 4,
-    Completeness = 1 << 5
+    Completeness = 1 << 5,
+    Readiness = 1 << 6
 }
 
 public sealed record ScanRunSummary(

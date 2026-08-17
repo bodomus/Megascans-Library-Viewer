@@ -1,4 +1,4 @@
-﻿using ScanVault.Core.Models;
+using ScanVault.Core.Models;
 
 namespace ScanVault.Core.Policies;
 
@@ -38,7 +38,11 @@ public static class AssetFiltering
                asset.Content.TextureSets.SelectMany(static set => set.Components).Any(component =>
                    component.FileName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
                    component.MapType.ToString().Contains(term, StringComparison.OrdinalIgnoreCase)) ||
-               asset.Content.Issues.Any(issue => issue.Message.Contains(term, StringComparison.OrdinalIgnoreCase));
+               asset.Content.Issues.Any(issue => issue.Message.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
+               asset.UnrealReadiness.Status.ToString().Contains(term, StringComparison.OrdinalIgnoreCase) ||
+               asset.UnrealReadiness.Reasons.Any(reason =>
+                   reason.RuleCode.ToString().Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                   reason.Message.Contains(term, StringComparison.OrdinalIgnoreCase));
     }
 
     public static bool MatchesInventoryFilter(AssetSummary asset, AssetInventoryFilter filter)
@@ -50,8 +54,31 @@ public static class AssetFiltering
                (!filter.HasFlag(AssetInventoryFilter.HasAtlas) || content.HasAtlas) &&
                (!filter.HasFlag(AssetInventoryFilter.Complete) || content.Completeness == AssetCompletenessStatus.Complete) &&
                (!filter.HasFlag(AssetInventoryFilter.Incomplete) || content.Completeness is not AssetCompletenessStatus.Complete and not AssetCompletenessStatus.Unknown) &&
-               (!filter.HasFlag(AssetInventoryFilter.Ambiguous) || content.Completeness == AssetCompletenessStatus.Ambiguous);
+               (!filter.HasFlag(AssetInventoryFilter.Ambiguous) || content.Completeness == AssetCompletenessStatus.Ambiguous) &&
+               MatchesUnrealReadiness(asset, filter);
     }
+
+    private static bool MatchesUnrealReadiness(AssetSummary asset, AssetInventoryFilter filter)
+    {
+        var selectedStatuses = new List<UnrealReadinessStatus>();
+        if (filter.HasFlag(AssetInventoryFilter.UnrealReady)) selectedStatuses.Add(UnrealReadinessStatus.Ready);
+        if (filter.HasFlag(AssetInventoryFilter.UnrealReadyWithWarnings)) selectedStatuses.Add(UnrealReadinessStatus.ReadyWithWarnings);
+        if (filter.HasFlag(AssetInventoryFilter.UnrealNotReady)) selectedStatuses.Add(UnrealReadinessStatus.NotReady);
+        if (filter.HasFlag(AssetInventoryFilter.UnrealUnknown)) selectedStatuses.Add(UnrealReadinessStatus.Unknown);
+        if (filter.HasFlag(AssetInventoryFilter.UnrealNotApplicable)) selectedStatuses.Add(UnrealReadinessStatus.NotApplicable);
+
+        var readiness = asset.UnrealReadiness;
+        return (selectedStatuses.Count == 0 || selectedStatuses.Contains(readiness.Status)) &&
+               (!filter.HasFlag(AssetInventoryFilter.UnrealMissingMesh) || HasReason(readiness, UnrealReadinessRuleCode.UeMissingMesh)) &&
+               (!filter.HasFlag(AssetInventoryFilter.UnrealMissingNormal) || HasReason(readiness, UnrealReadinessRuleCode.UeMissingNormal)) &&
+               (!filter.HasFlag(AssetInventoryFilter.UnrealMissingLods) || HasReason(readiness, UnrealReadinessRuleCode.UeNoLods) ||
+                   HasReason(readiness, UnrealReadinessRuleCode.UeIncompleteLodChain)) &&
+               (!filter.HasFlag(AssetInventoryFilter.UnrealBlockingIssues) || readiness.BlockingCount > 0) &&
+               (!filter.HasFlag(AssetInventoryFilter.UnrealWarnings) || readiness.WarningCount > 0);
+    }
+
+    private static bool HasReason(UnrealReadinessEvaluation readiness, UnrealReadinessRuleCode code) =>
+        readiness.Reasons.Any(reason => reason.RuleCode == code);
     public static IReadOnlyList<FolderNode> BuildFolderTree(
         string libraryRoot,
         IEnumerable<AssetSummary> assets)

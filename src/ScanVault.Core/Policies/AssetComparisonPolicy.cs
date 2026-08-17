@@ -56,6 +56,10 @@ public static class AssetComparisonPolicy
             Row("resolution", "Resolution", Resolution(left.MaxResolution), Resolution(right.MaxResolution)),
             Row("texel-density", "Texel Density", Number(left.TexelDensity, "0.##", " px/m"), Number(right.TexelDensity, "0.##", " px/m")),
             Row("completeness", "Completeness", EnumValue(leftContent.Completeness), EnumValue(rightContent.Completeness)),
+            Row("ue-readiness", "UE Readiness", ReadinessStatus(left), ReadinessStatus(right)),
+            Row("ue-blocking-count", "UE Blocking Count", Integer(left.UnrealReadiness.BlockingCount), Integer(right.UnrealReadiness.BlockingCount)),
+            Row("ue-warning-count", "UE Warning Count", Integer(left.UnrealReadiness.WarningCount), Integer(right.UnrealReadiness.WarningCount)),
+            Row("ue-readiness-reasons", "UE Readiness Reasons", ReadinessReasons(left), ReadinessReasons(right)),
             Row("issue-count", "Issue Count", Integer(leftContent.Issues.Count), Integer(rightContent.Issues.Count)),
             Row("file-count", "File Count", Integer(FileCount(leftContent)), Integer(FileCount(rightContent))),
             Row("texture-set-count", "Texture Set Count", Integer(leftContent.TextureSetCount), Integer(rightContent.TextureSetCount)),
@@ -283,6 +287,30 @@ public static class AssetComparisonPolicy
 
     private static ComparisonValue Presence(bool present) =>
         present ? ComparisonValue.Present("Present", "1") : ComparisonValue.Missing();
+
+    private static ComparisonValue ReadinessStatus(AssetSummary asset) =>
+        ComparisonValue.Present(DisplayStatus(asset.UnrealReadiness.Status), ((int)asset.UnrealReadiness.Status).ToString(CultureInfo.InvariantCulture));
+
+    private static ComparisonValue ReadinessReasons(AssetSummary asset)
+    {
+        var reasons = asset.UnrealReadiness.Reasons
+            .Select(static reason => $"{reason.Severity}:{reason.Code}:{reason.Message}")
+            .Order(IdentityComparer)
+            .ToArray();
+        return reasons.Length == 0
+            ? ComparisonValue.NotApplicable()
+            : ComparisonValue.Present(string.Join("; ", reasons), string.Join("|", reasons.Select(NormalizeToken)));
+    }
+
+    private static string DisplayStatus(UnrealReadinessStatus status) => status switch
+    {
+        UnrealReadinessStatus.Ready => "UE Ready",
+        UnrealReadinessStatus.ReadyWithWarnings => "UE Ready With Warnings",
+        UnrealReadinessStatus.NotReady => "Not UE Ready",
+        UnrealReadinessStatus.NotApplicable => "Not Applicable",
+        UnrealReadinessStatus.Unknown => "Unknown",
+        _ => status.ToString()
+    };
 
     private static ComparisonValue LodCount(AssetSummary asset) =>
         IsLodApplicable(asset)

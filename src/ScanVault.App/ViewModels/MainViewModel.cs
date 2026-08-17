@@ -16,7 +16,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 {
     private const AssetInventoryFilter AllInventoryFilters = AssetInventoryFilter.HasFbx | AssetInventoryFilter.HasLods |
         AssetInventoryFilter.HasBillboard | AssetInventoryFilter.HasAtlas | AssetInventoryFilter.Complete |
-        AssetInventoryFilter.Incomplete | AssetInventoryFilter.Ambiguous;
+        AssetInventoryFilter.Incomplete | AssetInventoryFilter.Ambiguous |
+        AssetInventoryFilter.UnrealReady | AssetInventoryFilter.UnrealReadyWithWarnings |
+        AssetInventoryFilter.UnrealNotReady | AssetInventoryFilter.UnrealUnknown |
+        AssetInventoryFilter.UnrealNotApplicable | AssetInventoryFilter.UnrealMissingMesh |
+        AssetInventoryFilter.UnrealMissingNormal | AssetInventoryFilter.UnrealMissingLods |
+        AssetInventoryFilter.UnrealBlockingIssues | AssetInventoryFilter.UnrealWarnings;
 
     private readonly IAssetIndex index;
     private readonly ILibraryScanService scanService;
@@ -120,6 +125,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ToggleCompleteCommand = new AsyncRelayCommand(token => ToggleFilterAsync(AssetInventoryFilter.Complete, token));
         ToggleIncompleteCommand = new AsyncRelayCommand(token => ToggleFilterAsync(AssetInventoryFilter.Incomplete, token));
         ToggleAmbiguousCommand = new AsyncRelayCommand(token => ToggleFilterAsync(AssetInventoryFilter.Ambiguous, token));
+        ToggleUnrealReadyCommand = new AsyncRelayCommand(token => ToggleFilterAsync(AssetInventoryFilter.UnrealReady, token));
+        ToggleUnrealReadyWithWarningsCommand = new AsyncRelayCommand(token => ToggleFilterAsync(AssetInventoryFilter.UnrealReadyWithWarnings, token));
+        ToggleUnrealNotReadyCommand = new AsyncRelayCommand(token => ToggleFilterAsync(AssetInventoryFilter.UnrealNotReady, token));
+        ToggleUnrealUnknownCommand = new AsyncRelayCommand(token => ToggleFilterAsync(AssetInventoryFilter.UnrealUnknown, token));
+        ToggleUnrealNotApplicableCommand = new AsyncRelayCommand(token => ToggleFilterAsync(AssetInventoryFilter.UnrealNotApplicable, token));
+        ToggleUnrealMissingMeshCommand = new AsyncRelayCommand(token => ToggleFilterAsync(AssetInventoryFilter.UnrealMissingMesh, token));
+        ToggleUnrealMissingNormalCommand = new AsyncRelayCommand(token => ToggleFilterAsync(AssetInventoryFilter.UnrealMissingNormal, token));
+        ToggleUnrealMissingLodsCommand = new AsyncRelayCommand(token => ToggleFilterAsync(AssetInventoryFilter.UnrealMissingLods, token));
+        ToggleUnrealBlockingIssuesCommand = new AsyncRelayCommand(token => ToggleFilterAsync(AssetInventoryFilter.UnrealBlockingIssues, token));
+        ToggleUnrealWarningsCommand = new AsyncRelayCommand(token => ToggleFilterAsync(AssetInventoryFilter.UnrealWarnings, token));
         ApplySmartCollectionCommand = new AsyncRelayCommand(ApplySelectedSmartCollectionAsync, () => SelectedSmartCollection is not null);
         UpdateActiveSmartCollectionCommand = new AsyncRelayCommand(UpdateActiveSmartCollectionAsync, () => CanUpdateActiveSmartCollection);
         DuplicateSmartCollectionCommand = new AsyncRelayCommand(DuplicateSelectedSmartCollectionAsync, () => SelectedSmartCollection is not null);
@@ -169,6 +184,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public AsyncRelayCommand ToggleCompleteCommand { get; }
     public AsyncRelayCommand ToggleIncompleteCommand { get; }
     public AsyncRelayCommand ToggleAmbiguousCommand { get; }
+    public AsyncRelayCommand ToggleUnrealReadyCommand { get; }
+    public AsyncRelayCommand ToggleUnrealReadyWithWarningsCommand { get; }
+    public AsyncRelayCommand ToggleUnrealNotReadyCommand { get; }
+    public AsyncRelayCommand ToggleUnrealUnknownCommand { get; }
+    public AsyncRelayCommand ToggleUnrealNotApplicableCommand { get; }
+    public AsyncRelayCommand ToggleUnrealMissingMeshCommand { get; }
+    public AsyncRelayCommand ToggleUnrealMissingNormalCommand { get; }
+    public AsyncRelayCommand ToggleUnrealMissingLodsCommand { get; }
+    public AsyncRelayCommand ToggleUnrealBlockingIssuesCommand { get; }
+    public AsyncRelayCommand ToggleUnrealWarningsCommand { get; }
     public AsyncRelayCommand ApplySmartCollectionCommand { get; }
     public AsyncRelayCommand UpdateActiveSmartCollectionCommand { get; }
     public AsyncRelayCommand DuplicateSmartCollectionCommand { get; }
@@ -208,6 +233,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(FilterComplete));
                 OnPropertyChanged(nameof(FilterIncomplete));
                 OnPropertyChanged(nameof(FilterAmbiguous));
+                OnPropertyChanged(nameof(FilterUnrealReady));
+                OnPropertyChanged(nameof(FilterUnrealReadyWithWarnings));
+                OnPropertyChanged(nameof(FilterUnrealNotReady));
+                OnPropertyChanged(nameof(FilterUnrealUnknown));
+                OnPropertyChanged(nameof(FilterUnrealNotApplicable));
+                OnPropertyChanged(nameof(FilterUnrealMissingMesh));
+                OnPropertyChanged(nameof(FilterUnrealMissingNormal));
+                OnPropertyChanged(nameof(FilterUnrealMissingLods));
+                OnPropertyChanged(nameof(FilterUnrealBlockingIssues));
+                OnPropertyChanged(nameof(FilterUnrealWarnings));
             }
         }
     }
@@ -219,6 +254,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public bool FilterComplete => InventoryFilter.HasFlag(AssetInventoryFilter.Complete);
     public bool FilterIncomplete => InventoryFilter.HasFlag(AssetInventoryFilter.Incomplete);
     public bool FilterAmbiguous => InventoryFilter.HasFlag(AssetInventoryFilter.Ambiguous);
+    public bool FilterUnrealReady => InventoryFilter.HasFlag(AssetInventoryFilter.UnrealReady);
+    public bool FilterUnrealReadyWithWarnings => InventoryFilter.HasFlag(AssetInventoryFilter.UnrealReadyWithWarnings);
+    public bool FilterUnrealNotReady => InventoryFilter.HasFlag(AssetInventoryFilter.UnrealNotReady);
+    public bool FilterUnrealUnknown => InventoryFilter.HasFlag(AssetInventoryFilter.UnrealUnknown);
+    public bool FilterUnrealNotApplicable => InventoryFilter.HasFlag(AssetInventoryFilter.UnrealNotApplicable);
+    public bool FilterUnrealMissingMesh => InventoryFilter.HasFlag(AssetInventoryFilter.UnrealMissingMesh);
+    public bool FilterUnrealMissingNormal => InventoryFilter.HasFlag(AssetInventoryFilter.UnrealMissingNormal);
+    public bool FilterUnrealMissingLods => InventoryFilter.HasFlag(AssetInventoryFilter.UnrealMissingLods);
+    public bool FilterUnrealBlockingIssues => InventoryFilter.HasFlag(AssetInventoryFilter.UnrealBlockingIssues);
+    public bool FilterUnrealWarnings => InventoryFilter.HasFlag(AssetInventoryFilter.UnrealWarnings);
     public string WindowTitle { get; }
     public string ProductVersion { get; }
 
@@ -470,6 +515,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 HasTextureSets = selected.Record.Definition.HasTextureSets,
                 HasIssues = selected.Record.Definition.HasIssues,
                 CompletenessStatuses = selected.Record.Definition.CompletenessStatuses,
+                UnrealReadinessStatuses = selected.Record.Definition.UnrealReadinessStatuses,
+                UnrealReadinessRuleCodes = selected.Record.Definition.UnrealReadinessRuleCodes,
+                HasUnrealBlockingIssues = selected.Record.Definition.HasUnrealBlockingIssues,
+                HasUnrealWarnings = selected.Record.Definition.HasUnrealWarnings,
                 MinimumResolution = selected.Record.Definition.MinimumResolution,
                 MaximumResolution = selected.Record.Definition.MaximumResolution
             };
@@ -919,6 +968,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (definition.HasBillboard is true) parts.Add("Billboard");
         if (definition.HasIssues is true) parts.Add("Has issues");
         if (definition.CompletenessStatuses.Count > 0) parts.Add($"Completeness: {string.Join(", ", definition.CompletenessStatuses)}");
+        if (definition.UnrealReadinessStatuses.Count > 0) parts.Add($"UE: {string.Join(", ", definition.UnrealReadinessStatuses.Select(DisplayStatus))}");
+        if (definition.UnrealReadinessRuleCodes.Count > 0) parts.Add($"UE reasons: {string.Join(", ", definition.UnrealReadinessRuleCodes)}");
+        if (definition.HasUnrealBlockingIssues is true) parts.Add("UE blocking");
+        if (definition.HasUnrealWarnings is true) parts.Add("UE warnings");
         if (definition.SortMode is not null) parts.Add($"Sort: {definition.SortMode}");
         return parts.Count == 0 ? "All indexed assets." : string.Join("; ", parts);
     }
@@ -933,8 +986,28 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (definition.CompletenessStatuses.Count == 1 && definition.CompletenessStatuses.Contains(AssetCompletenessStatus.Complete)) filter |= AssetInventoryFilter.Complete;
         if (definition.CompletenessStatuses.Count == 1 && definition.CompletenessStatuses.Contains(AssetCompletenessStatus.Ambiguous)) filter |= AssetInventoryFilter.Ambiguous;
         if (definition.CompletenessStatuses.Any(status => status is AssetCompletenessStatus.Usable or AssetCompletenessStatus.Partial or AssetCompletenessStatus.MissingCriticalFiles)) filter |= AssetInventoryFilter.Incomplete;
+        if (definition.UnrealReadinessStatuses.Contains(UnrealReadinessStatus.Ready)) filter |= AssetInventoryFilter.UnrealReady;
+        if (definition.UnrealReadinessStatuses.Contains(UnrealReadinessStatus.ReadyWithWarnings)) filter |= AssetInventoryFilter.UnrealReadyWithWarnings;
+        if (definition.UnrealReadinessStatuses.Contains(UnrealReadinessStatus.NotReady)) filter |= AssetInventoryFilter.UnrealNotReady;
+        if (definition.UnrealReadinessStatuses.Contains(UnrealReadinessStatus.Unknown)) filter |= AssetInventoryFilter.UnrealUnknown;
+        if (definition.UnrealReadinessStatuses.Contains(UnrealReadinessStatus.NotApplicable)) filter |= AssetInventoryFilter.UnrealNotApplicable;
+        if (definition.UnrealReadinessRuleCodes.Contains(UnrealReadinessRuleCode.UeMissingMesh)) filter |= AssetInventoryFilter.UnrealMissingMesh;
+        if (definition.UnrealReadinessRuleCodes.Contains(UnrealReadinessRuleCode.UeMissingNormal)) filter |= AssetInventoryFilter.UnrealMissingNormal;
+        if (definition.UnrealReadinessRuleCodes.Any(code => code is UnrealReadinessRuleCode.UeNoLods or UnrealReadinessRuleCode.UeIncompleteLodChain)) filter |= AssetInventoryFilter.UnrealMissingLods;
+        if (definition.HasUnrealBlockingIssues is true) filter |= AssetInventoryFilter.UnrealBlockingIssues;
+        if (definition.HasUnrealWarnings is true) filter |= AssetInventoryFilter.UnrealWarnings;
         return filter;
     }
+
+    private static string DisplayStatus(UnrealReadinessStatus status) => status switch
+    {
+        UnrealReadinessStatus.Ready => "UE Ready",
+        UnrealReadinessStatus.ReadyWithWarnings => "UE Ready With Warnings",
+        UnrealReadinessStatus.NotReady => "Not UE Ready",
+        UnrealReadinessStatus.NotApplicable => "Not Applicable",
+        UnrealReadinessStatus.Unknown => "Unknown",
+        _ => status.ToString()
+    };
 
     public async Task<ScanHistoryViewModel> CreateScanHistoryViewModelAsync(CancellationToken cancellationToken)
     {

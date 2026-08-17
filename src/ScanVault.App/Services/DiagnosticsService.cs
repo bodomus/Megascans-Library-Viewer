@@ -28,6 +28,7 @@ public sealed class DiagnosticsService(
         var persisted = indexDiagnostics.LastSuccessfulScan;
         var hasCurrentAttempt = context.LastScanStatus != ScanAttemptStatus.NotRun;
 
+        var readiness = indexDiagnostics.UnrealReadiness ?? UnrealReadinessSummary.Empty;
         return new(
             buildInfo.ProductVersion,
             buildInfo.InformationalVersion,
@@ -53,6 +54,14 @@ public sealed class DiagnosticsService(
             indexDiagnostics.Compatibility.Guidance,
             paths.SettingsPath,
             context.CurrentSortMode,
-            context.CurrentSelectedFolder);
+            context.CurrentSelectedFolder,
+            readiness.RuleVersion,
+            readiness.LastEvaluatedAtUtc,
+            readiness.ReadyCount,
+            readiness.ReadyWithWarningsCount,
+            readiness.NotReadyCount,
+            readiness.UnknownCount,
+            readiness.NotApplicableCount,
+            readiness.RequiresRecalculationCount > 0);
     }
 }

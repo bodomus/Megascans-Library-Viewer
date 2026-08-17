@@ -132,6 +132,11 @@ public static class ReportProfilePolicy
             asset.Content.HasBillboard,
             asset.Content.TextureSetCount,
             InventoryRowCount(asset),
+            DisplayStatus(asset.UnrealReadiness.Status),
+            asset.UnrealReadiness.ReadinessRuleVersion,
+            asset.UnrealReadiness.BlockingCount,
+            asset.UnrealReadiness.WarningCount,
+            ReadinessReasons(asset.UnrealReadiness),
             null);
     }
 
@@ -223,6 +228,23 @@ public static class ReportProfilePolicy
         AssetContentIssueCode.InaccessibleDirectory => "Access",
         AssetContentIssueCode.UnclassifiedFile => "Classification",
         _ => "Content"
+    };
+
+    private static string ReadinessReasons(UnrealReadinessEvaluation readiness) =>
+        string.Join("; ", readiness.Reasons.Select(static reason =>
+        {
+            var related = string.IsNullOrWhiteSpace(reason.RelatedInventoryItem) ? string.Empty : $" [{reason.RelatedInventoryItem}]";
+            return $"{reason.Severity}:{reason.Code}:{reason.Message}{related}";
+        }));
+
+    private static string DisplayStatus(UnrealReadinessStatus status) => status switch
+    {
+        UnrealReadinessStatus.Ready => "UE Ready",
+        UnrealReadinessStatus.ReadyWithWarnings => "UE Ready With Warnings",
+        UnrealReadinessStatus.NotReady => "Not UE Ready",
+        UnrealReadinessStatus.NotApplicable => "Not Applicable",
+        UnrealReadinessStatus.Unknown => "Unknown",
+        _ => status.ToString()
     };
 
     private static string Relative(string root, string path)

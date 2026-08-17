@@ -37,6 +37,7 @@ public sealed record AssetSummary(
     public string? RawAssetType { get; init; }
     public IReadOnlyList<string> ReferencedContentPaths { get; init; } = [];
     public AssetContentInventory Content { get; init; } = AssetContentInventory.Empty;
+    public UnrealReadinessEvaluation UnrealReadiness { get; init; } = UnrealReadinessEvaluation.Unknown;
 }
 
 /// <summary>Persisted per-user application settings.</summary>

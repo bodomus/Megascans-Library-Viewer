@@ -79,6 +79,18 @@ internal static partial class InfrastructureLog
         object issueCode,
         string message,
         string paths);
+
+    [LoggerMessage(1013, LogLevel.Information,
+        "Completed Unreal readiness evaluation: {AssetCount} assets in {Elapsed}; {AssetsPerSecond} assets/s; ready {ReadyCount}, warnings {WarningCount}, not ready {NotReadyCount}, unknown {UnknownCount}")]
+    public static partial void UnrealReadinessEvaluated(
+        ILogger logger,
+        int assetCount,
+        TimeSpan elapsed,
+        double assetsPerSecond,
+        int readyCount,
+        int warningCount,
+        int notReadyCount,
+        int unknownCount);
     [LoggerMessage(1101, LogLevel.Information,
         "SQLite index ready at {DatabasePath}, schema version {SchemaVersion}")]
     public static partial void IndexReady(

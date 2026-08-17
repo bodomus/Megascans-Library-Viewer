@@ -16,7 +16,7 @@ public enum ReportExportPhase { PreparingQuery, ReadingAssets, WritingReport, Fi
 
 public static class ReportContract
 {
-    public const int SchemaVersion = 1;
+    public const int SchemaVersion = 2;
 }
 
 public sealed record ReportMetadataDto(
@@ -66,6 +66,11 @@ public sealed record AssetCatalogRowDto(
     bool HasBillboard,
     int TextureSetCount,
     int FileCount,
+    string UnrealReadinessStatus,
+    int ReadinessRuleVersion,
+    int BlockingIssueCount,
+    int WarningCount,
+    string ReadinessReasons,
     DateTimeOffset? LastIndexedAtUtc) : IReportRow;
 
 public sealed record AssetInventoryRowDto(
@@ -155,4 +160,3 @@ public sealed record ReportDocument(
     string Title,
     ReportMetadataDto Metadata,
     IEnumerable<IReportRow> Rows);
-

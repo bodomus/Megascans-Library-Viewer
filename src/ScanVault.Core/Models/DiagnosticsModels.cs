@@ -45,7 +45,8 @@ public sealed record PersistedScanMetadata(
 public sealed record IndexDiagnostics(
     IndexCompatibilityInfo Compatibility,
     int IndexedAssetCount,
-    PersistedScanMetadata? LastSuccessfulScan);
+    PersistedScanMetadata? LastSuccessfulScan,
+    UnrealReadinessSummary? UnrealReadiness = null);
 
 public sealed record DiagnosticsSnapshot(
     string ApplicationVersion,
@@ -70,6 +71,14 @@ public sealed record DiagnosticsSnapshot(
     string CompatibilityGuidance,
     string? SettingsPath = null,
     string? CurrentSortMode = null,
-    string? CurrentSelectedFolder = null);
+    string? CurrentSelectedFolder = null,
+    int UnrealReadinessRuleVersion = 0,
+    DateTimeOffset? LastUnrealReadinessEvaluation = null,
+    int UnrealReadyCount = 0,
+    int UnrealReadyWithWarningsCount = 0,
+    int UnrealNotReadyCount = 0,
+    int UnrealUnknownCount = 0,
+    int UnrealNotApplicableCount = 0,
+    bool RequiresUnrealReadinessRecalculation = false);
 
 public sealed record DiagnosticField(string Label, string Value);

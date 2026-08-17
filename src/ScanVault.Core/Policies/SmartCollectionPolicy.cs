@@ -11,6 +11,16 @@ public static class SmartCollectionPolicy
             SmartCollectionDefinition.Empty with { CompletenessStatuses = [AssetCompletenessStatus.Complete] }),
         BuiltIn("builtin-assets-with-issues", "Assets With Issues", "Assets with inventory issues.",
             SmartCollectionDefinition.Empty with { HasIssues = true }),
+        BuiltIn("builtin-ue-ready", "UE Ready Assets", "Assets that satisfy Unreal Engine readiness rules.",
+            SmartCollectionDefinition.Empty with { UnrealReadinessStatuses = [UnrealReadinessStatus.Ready] }),
+        BuiltIn("builtin-ue-ready-warnings", "UE Ready With Warnings", "Assets that can be imported manually but need attention.",
+            SmartCollectionDefinition.Empty with { UnrealReadinessStatuses = [UnrealReadinessStatus.ReadyWithWarnings] }),
+        BuiltIn("builtin-ue-not-ready", "Not UE Ready", "Assets blocked by Unreal Engine readiness rules.",
+            SmartCollectionDefinition.Empty with { UnrealReadinessStatuses = [UnrealReadinessStatus.NotReady] }),
+        BuiltIn("builtin-ue-missing-mesh", "UE Missing Mesh", "Assets blocked by missing mesh readiness rules.",
+            SmartCollectionDefinition.Empty with { UnrealReadinessRuleCodes = [UnrealReadinessRuleCode.UeMissingMesh] }),
+        BuiltIn("builtin-ue-missing-lods", "UE Missing LODs", "Assets with missing or incomplete Unreal LOD readiness warnings.",
+            SmartCollectionDefinition.Empty with { UnrealReadinessRuleCodes = [UnrealReadinessRuleCode.UeNoLods, UnrealReadinessRuleCode.UeIncompleteLodChain] }),
         BuiltIn("builtin-missing-mesh", "Missing Mesh", "Assets without FBX or ABC meshes.",
             SmartCollectionDefinition.Empty with { HasFbx = false, HasAbc = false }),
         BuiltIn("builtin-missing-lods", "Missing LODs", "Assets without LOD meshes.",
@@ -48,6 +58,10 @@ public static class SmartCollectionPolicy
             HasBillboard = ToCriterion(inventoryFilter, AssetInventoryFilter.HasBillboard),
             HasAtlas = ToCriterion(inventoryFilter, AssetInventoryFilter.HasAtlas),
             CompletenessStatuses = CompletenessCriteria(inventoryFilter),
+            UnrealReadinessStatuses = ReadinessStatusCriteria(inventoryFilter),
+            UnrealReadinessRuleCodes = ReadinessRuleCriteria(inventoryFilter),
+            HasUnrealBlockingIssues = ToCriterion(inventoryFilter, AssetInventoryFilter.UnrealBlockingIssues),
+            HasUnrealWarnings = ToCriterion(inventoryFilter, AssetInventoryFilter.UnrealWarnings),
             SortMode = saveSort ? sortMode : null
         };
     }
@@ -58,7 +72,7 @@ public static class SmartCollectionPolicy
         string? libraryRoot,
         string? currentFolderPath)
     {
-        if (definition.DefinitionVersion != SmartCollectionDefinition.CurrentVersion)
+        if (definition.DefinitionVersion is < 1 or > SmartCollectionDefinition.CurrentVersion)
         {
             return false;
         }
@@ -89,7 +103,7 @@ public static class SmartCollectionPolicy
         SmartCollectionDefinition definition,
         string? libraryRoot)
     {
-        if (definition.DefinitionVersion != SmartCollectionDefinition.CurrentVersion)
+        if (definition.DefinitionVersion is < 1 or > SmartCollectionDefinition.CurrentVersion)
         {
             return new(SmartCollectionCompatibility.UnsupportedDefinition, "Unsupported definition version.");
         }
@@ -173,6 +187,31 @@ public static class SmartCollectionPolicy
             : [];
     }
 
+    private static List<UnrealReadinessStatus> ReadinessStatusCriteria(AssetInventoryFilter filter)
+    {
+        var statuses = new List<UnrealReadinessStatus>();
+        if (filter.HasFlag(AssetInventoryFilter.UnrealReady)) statuses.Add(UnrealReadinessStatus.Ready);
+        if (filter.HasFlag(AssetInventoryFilter.UnrealReadyWithWarnings)) statuses.Add(UnrealReadinessStatus.ReadyWithWarnings);
+        if (filter.HasFlag(AssetInventoryFilter.UnrealNotReady)) statuses.Add(UnrealReadinessStatus.NotReady);
+        if (filter.HasFlag(AssetInventoryFilter.UnrealUnknown)) statuses.Add(UnrealReadinessStatus.Unknown);
+        if (filter.HasFlag(AssetInventoryFilter.UnrealNotApplicable)) statuses.Add(UnrealReadinessStatus.NotApplicable);
+        return statuses;
+    }
+
+    private static List<UnrealReadinessRuleCode> ReadinessRuleCriteria(AssetInventoryFilter filter)
+    {
+        var codes = new List<UnrealReadinessRuleCode>();
+        if (filter.HasFlag(AssetInventoryFilter.UnrealMissingMesh)) codes.Add(UnrealReadinessRuleCode.UeMissingMesh);
+        if (filter.HasFlag(AssetInventoryFilter.UnrealMissingNormal)) codes.Add(UnrealReadinessRuleCode.UeMissingNormal);
+        if (filter.HasFlag(AssetInventoryFilter.UnrealMissingLods))
+        {
+            codes.Add(UnrealReadinessRuleCode.UeNoLods);
+            codes.Add(UnrealReadinessRuleCode.UeIncompleteLodChain);
+        }
+
+        return codes;
+    }
+
     private static bool MatchesContent(AssetSummary asset, SmartCollectionDefinition definition)
     {
         var content = asset.Content;
@@ -185,6 +224,10 @@ public static class SmartCollectionPolicy
                MatchesBoolean(definition.HasTextureSets, content.TextureSetCount > 0) &&
                MatchesBoolean(definition.HasIssues, content.Issues.Count > 0) &&
                (definition.CompletenessStatuses.Count == 0 || definition.CompletenessStatuses.Contains(content.Completeness)) &&
+               (definition.UnrealReadinessStatuses.Count == 0 || definition.UnrealReadinessStatuses.Contains(asset.UnrealReadiness.Status)) &&
+               (definition.UnrealReadinessRuleCodes.Count == 0 || definition.UnrealReadinessRuleCodes.Any(code => asset.UnrealReadiness.Reasons.Any(reason => reason.RuleCode == code))) &&
+               MatchesBoolean(definition.HasUnrealBlockingIssues, asset.UnrealReadiness.BlockingCount > 0) &&
+               MatchesBoolean(definition.HasUnrealWarnings, asset.UnrealReadiness.WarningCount > 0) &&
                (definition.MinimumResolution is null || asset.MaxResolution?.MaxDimension >= definition.MinimumResolution) &&
                (definition.MaximumResolution is null || asset.MaxResolution?.MaxDimension <= definition.MaximumResolution);
     }

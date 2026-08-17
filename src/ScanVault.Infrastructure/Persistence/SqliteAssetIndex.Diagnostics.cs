@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using ScanVault.Core.Models;
+using ScanVault.Core.Policies;
 
 namespace ScanVault.Infrastructure.Persistence;
 
@@ -71,7 +72,7 @@ public sealed partial class SqliteAssetIndex
                 return NewerCompatibility(schemaVersion, null);
             }
 
-            if (schemaVersion is 1 or 2 or 3 or 4 or 5)
+            if (schemaVersion is 1 or 2 or 3 or 4 or 5 or 6)
             {
                 return new(
                     IndexCompatibilityState.RequiresMigration,
@@ -161,7 +162,7 @@ public sealed partial class SqliteAssetIndex
         await InitializeAsync(cancellationToken).ConfigureAwait(false);
         if (!Compatibility.IsReadable)
         {
-            return new(Compatibility, 0, null);
+            return new(Compatibility, 0, null, UnrealReadinessSummary.Empty);
         }
 
         try
@@ -175,7 +176,9 @@ public sealed partial class SqliteAssetIndex
                 CultureInfo.InvariantCulture);
             var scan = await ReadScanMetadataAsync(connection, cancellationToken)
                 .ConfigureAwait(false);
-            return new(Compatibility, count, scan);
+            var readiness = await ReadUnrealReadinessSummaryAsync(connection, cancellationToken)
+                .ConfigureAwait(false);
+            return new(Compatibility, count, scan, readiness);
         }
         catch (Exception exception) when (
             exception is SqliteException or
@@ -186,7 +189,7 @@ public sealed partial class SqliteAssetIndex
             InfrastructureLog.IndexCorrupted(logger, resolvedPaths.DatabasePath, exception);
             Compatibility = CorruptedCompatibility(
                 "Index could not be read. The database file was preserved. Back it up, then restore a known-good index or move it aside manually before creating a replacement.");
-            return new(Compatibility, 0, null);
+            return new(Compatibility, 0, null, UnrealReadinessSummary.Empty);
         }
     }
 
@@ -244,6 +247,11 @@ public sealed partial class SqliteAssetIndex
         if (fromVersion == 5)
         {
             await MigrateVersionFiveAsync(connection, cancellationToken).ConfigureAwait(false);
+            fromVersion = 6;
+        }
+        if (fromVersion == 6)
+        {
+            await MigrateVersionSixAsync(connection, cancellationToken).ConfigureAwait(false);
         }
         InfrastructureLog.IndexMigrationCompleted(logger, resolvedPaths.DatabasePath, CurrentSchemaVersion);
     }
@@ -358,6 +366,75 @@ public sealed partial class SqliteAssetIndex
         result.SkippedMalformedFiles +
         result.SkippedUnrelatedFiles +
         result.DuplicateGroups.Sum(group => group.SkippedCopyJsonPaths.Count);
+
+    private static async Task<UnrealReadinessSummary> ReadUnrealReadinessSummaryAsync(
+        SqliteConnection connection,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT readiness_status, readiness_rule_version, readiness_evaluated_at_utc, COUNT(*)
+            FROM assets
+            GROUP BY readiness_status, readiness_rule_version, readiness_evaluated_at_utc;
+            """;
+
+        var ready = 0;
+        var readyWithWarnings = 0;
+        var notReady = 0;
+        var notApplicable = 0;
+        var unknown = 0;
+        var requiresRecalculation = 0;
+        DateTimeOffset? lastEvaluation = null;
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            var status = (UnrealReadinessStatus)reader.GetInt32(0);
+            var version = reader.GetInt32(1);
+            var count = reader.GetInt32(3);
+            if (version != UnrealReadinessPolicy.CurrentRuleVersion || reader.IsDBNull(2))
+            {
+                requiresRecalculation += count;
+            }
+
+            if (!reader.IsDBNull(2))
+            {
+                var evaluated = DateTimeOffset.Parse(reader.GetString(2), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+                if (lastEvaluation is null || evaluated > lastEvaluation.Value)
+                {
+                    lastEvaluation = evaluated;
+                }
+            }
+
+            switch (status)
+            {
+                case UnrealReadinessStatus.Ready:
+                    ready += count;
+                    break;
+                case UnrealReadinessStatus.ReadyWithWarnings:
+                    readyWithWarnings += count;
+                    break;
+                case UnrealReadinessStatus.NotReady:
+                    notReady += count;
+                    break;
+                case UnrealReadinessStatus.NotApplicable:
+                    notApplicable += count;
+                    break;
+                case UnrealReadinessStatus.Unknown:
+                    unknown += count;
+                    break;
+            }
+        }
+
+        return new(
+            ready,
+            readyWithWarnings,
+            notReady,
+            notApplicable,
+            unknown,
+            requiresRecalculation,
+            UnrealReadinessPolicy.CurrentRuleVersion,
+            lastEvaluation);
+    }
 
     private static IndexCompatibilityInfo CompatibleCompatibility() => new(
         IndexCompatibilityState.Compatible,

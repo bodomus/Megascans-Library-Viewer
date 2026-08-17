@@ -19,11 +19,15 @@ public sealed record SmartCollectionDefinition(
     bool? HasTextureSets,
     bool? HasIssues,
     IReadOnlyList<AssetCompletenessStatus> CompletenessStatuses,
+    IReadOnlyList<UnrealReadinessStatus> UnrealReadinessStatuses,
+    IReadOnlyList<UnrealReadinessRuleCode> UnrealReadinessRuleCodes,
+    bool? HasUnrealBlockingIssues,
+    bool? HasUnrealWarnings,
     int? MinimumResolution,
     int? MaximumResolution,
     AssetSortMode? SortMode)
 {
-    public const int CurrentVersion = 1;
+    public const int CurrentVersion = 2;
     public static SmartCollectionDefinition Empty { get; } = new(
         CurrentVersion,
         string.Empty,
@@ -39,6 +43,10 @@ public sealed record SmartCollectionDefinition(
         null,
         null,
         [],
+        [],
+        [],
+        null,
+        null,
         null,
         null,
         null);

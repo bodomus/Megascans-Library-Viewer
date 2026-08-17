@@ -13,6 +13,17 @@ public sealed class ContentInventoryViewModel
         Name = asset.Name;
         AssetId = asset.Id;
         Status = asset.Content.Completeness.ToString();
+        UnrealReadinessStatus = asset.UnrealReadiness.Status.ToString();
+        UnrealReadinessRuleVersion = asset.UnrealReadiness.ReadinessRuleVersion.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        UnrealReadinessBlockingCount = asset.UnrealReadiness.BlockingCount.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        UnrealReadinessWarningCount = asset.UnrealReadiness.WarningCount.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        UnrealReadinessReasonLines = asset.UnrealReadiness.Reasons
+            .Select(reason =>
+            {
+                var related = string.IsNullOrWhiteSpace(reason.RelatedInventoryItem) ? string.Empty : $"  {reason.RelatedInventoryItem}";
+                return $"{reason.Severity}  {reason.Code}  {reason.Message}{related}";
+            })
+            .ToArray();
         VariantLines = asset.Content.Variants.SelectMany(variant =>
             variant.Meshes.Select(mesh => $"{variant.Name}  LOD{mesh.Lod}  {mesh.Format.ToString().ToUpperInvariant()}  {mesh.FileName}")).ToArray();
         TextureSetLines = asset.Content.TextureSets.SelectMany(set => set.Components.Select(component =>
@@ -31,6 +42,11 @@ public sealed class ContentInventoryViewModel
     public string Name { get; }
     public string AssetId { get; }
     public string Status { get; }
+    public string UnrealReadinessStatus { get; }
+    public string UnrealReadinessRuleVersion { get; }
+    public string UnrealReadinessBlockingCount { get; }
+    public string UnrealReadinessWarningCount { get; }
+    public IReadOnlyList<string> UnrealReadinessReasonLines { get; }
     public IReadOnlyList<string> VariantLines { get; }
     public IReadOnlyList<string> TextureSetLines { get; }
     public IReadOnlyList<string> IssueLines { get; }

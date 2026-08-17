@@ -5,6 +5,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using ScanVault.Core.Abstractions;
 using ScanVault.Core.Models;
+using ScanVault.Core.Policies;
 using ScanVault.Infrastructure.Configuration;
 
 namespace ScanVault.Infrastructure.Persistence;
@@ -13,7 +14,7 @@ public sealed partial class SqliteAssetIndex(
     ScanVaultPaths paths,
     ILogger<SqliteAssetIndex> logger) : IAssetIndex
 {
-    public const int CurrentSchemaVersion = 6;
+    public const int CurrentSchemaVersion = 7;
     public const int CurrentNormalizationVersion = 3;
     private static readonly bool ProviderInitialized = InitializeProvider();
     private readonly ScanVaultPaths resolvedPaths = paths;
@@ -87,7 +88,7 @@ public sealed partial class SqliteAssetIndex(
                    thumbnail_path, preview_path, biome, region, physical_size,
                    max_resolution, resolution_width, resolution_height, texel_density,
                    average_color, categories_json, tags_json, last_write_time_utc,
-                   inventory_json
+                   inventory_json, readiness_json
             FROM assets
             ORDER BY name COLLATE NOCASE, id COLLATE NOCASE;
             """;
@@ -133,7 +134,8 @@ public sealed partial class SqliteAssetIndex(
             {
                 RawAssetType = reader.IsDBNull(3) ? null : reader.GetString(3),
                 Content = JsonSerializer.Deserialize<AssetContentInventory>(reader.GetString(19))
-                    ?? AssetContentInventory.Empty
+                    ?? AssetContentInventory.Empty,
+                UnrealReadiness = ReadReadiness(reader.GetString(20))
             });
         }
 
@@ -169,9 +171,30 @@ public sealed partial class SqliteAssetIndex(
 
         try
         {
+            var readinessStopwatch = Stopwatch.StartNew();
+            var evaluatedAtUtc = DateTimeOffset.UtcNow;
+            var assetsToPersist = assets
+                .Select(asset =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    return UnrealReadinessPolicy.EnsureCurrent(asset, evaluatedAtUtc);
+                })
+                .ToArray();
+            readinessStopwatch.Stop();
+            var readinessSummary = UnrealReadinessPolicy.Summarize(assetsToPersist);
+            InfrastructureLog.UnrealReadinessEvaluated(
+                logger,
+                assetsToPersist.Length,
+                readinessStopwatch.Elapsed,
+                readinessStopwatch.Elapsed.TotalSeconds <= 0 ? assetsToPersist.Length : assetsToPersist.Length / readinessStopwatch.Elapsed.TotalSeconds,
+                readinessSummary.ReadyCount,
+                readinessSummary.ReadyWithWarningsCount,
+                readinessSummary.NotReadyCount,
+                readinessSummary.UnknownCount);
+
             var existing = await LoadExistingAsync(connection, transaction, cancellationToken)
                 .ConfigureAwait(false);
-            var history = await BuildHistoryAsync(connection, transaction, libraryRoot, assets, scanRunId, cancellationToken)
+            var history = await BuildHistoryAsync(connection, transaction, libraryRoot, assetsToPersist, scanRunId, cancellationToken)
                 .ConfigureAwait(false);
             var added = 0;
             var updated = 0;
@@ -182,7 +205,7 @@ public sealed partial class SqliteAssetIndex(
                 "CREATE TEMP TABLE current_scan_ids(id TEXT PRIMARY KEY COLLATE NOCASE) WITHOUT ROWID;",
                 cancellationToken).ConfigureAwait(false);
 
-            foreach (var asset in assets)
+            foreach (var asset in assetsToPersist)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 if (!existing.TryGetValue(asset.Id, out var previous))
@@ -245,8 +268,8 @@ public sealed partial class SqliteAssetIndex(
                     connection,
                     transaction,
                     libraryRoot,
-                    draftResult.DuplicateAnalysisSources.Count == 0 ? assets : draftResult.DuplicateAnalysisSources,
-                    assets,
+                    draftResult.DuplicateAnalysisSources.Count == 0 ? assetsToPersist : draftResult.DuplicateAnalysisSources.Select(asset => UnrealReadinessPolicy.EnsureCurrent(asset, evaluatedAtUtc)).ToArray(),
+                    assetsToPersist,
                     scanRunId,
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -312,7 +335,7 @@ public sealed partial class SqliteAssetIndex(
                 version INTEGER NOT NULL,
                 normalization_version INTEGER NOT NULL
             );
-            INSERT INTO schema_info(version, normalization_version) VALUES (6, 3);
+            INSERT INTO schema_info(version, normalization_version) VALUES (7, 3);
 
             CREATE TABLE assets (
                 id TEXT PRIMARY KEY COLLATE NOCASE,
@@ -336,6 +359,12 @@ public sealed partial class SqliteAssetIndex(
                 tags_json TEXT NOT NULL,
                 last_write_time_utc TEXT NOT NULL,
                 inventory_json TEXT NOT NULL,
+                readiness_json TEXT NOT NULL,
+                readiness_status INTEGER NOT NULL,
+                readiness_rule_version INTEGER NOT NULL,
+                readiness_blocking_count INTEGER NOT NULL,
+                readiness_warning_count INTEGER NOT NULL,
+                readiness_evaluated_at_utc TEXT NULL,
                 completeness INTEGER NOT NULL,
                 has_fbx INTEGER NOT NULL,
                 has_lods INTEGER NOT NULL,
@@ -386,6 +415,8 @@ public sealed partial class SqliteAssetIndex(
             CREATE INDEX ix_assets_biome ON assets(biome COLLATE NOCASE);
             CREATE INDEX ix_assets_region ON assets(region COLLATE NOCASE);
             CREATE INDEX ix_assets_completeness ON assets(completeness);
+            CREATE INDEX ix_assets_readiness_status ON assets(readiness_status);
+            CREATE INDEX ix_assets_readiness_rule_version ON assets(readiness_rule_version);
             CREATE INDEX ix_assets_has_fbx ON assets(has_fbx);
             CREATE INDEX ix_assets_has_lods ON assets(has_lods);
             CREATE INDEX ix_assets_has_billboard ON assets(has_billboard);
@@ -552,13 +583,17 @@ public sealed partial class SqliteAssetIndex(
                 biome, region, physical_size, max_resolution,
                 resolution_width, resolution_height, texel_density, average_color,
                 categories_json, tags_json, last_write_time_utc, inventory_json,
+                readiness_json, readiness_status, readiness_rule_version,
+                readiness_blocking_count, readiness_warning_count, readiness_evaluated_at_utc,
                 completeness, has_fbx, has_lods, has_billboard, has_atlas,
                 variant_count, lod_count, texture_set_count)
             VALUES(
                 $id, $root, $name, $type, $rawType, $folder, $json, $thumb, $preview,
                 $biome, $region, $size, $resolution, $resolutionWidth,
                 $resolutionHeight, $texel, $color, $categories, $tags, $lastWrite,
-                $inventory, $completeness, $hasFbx, $hasLods, $hasBillboard, $hasAtlas,
+                $inventory, $readiness, $readinessStatus, $readinessVersion,
+                $readinessBlocking, $readinessWarnings, $readinessEvaluated,
+                $completeness, $hasFbx, $hasLods, $hasBillboard, $hasAtlas,
                 $variantCount, $lodCount, $textureSetCount)
             ON CONFLICT(id) DO UPDATE SET
                 library_root = excluded.library_root,
@@ -581,6 +616,12 @@ public sealed partial class SqliteAssetIndex(
                 tags_json = excluded.tags_json,
                 last_write_time_utc = excluded.last_write_time_utc,
                 inventory_json = excluded.inventory_json,
+                readiness_json = excluded.readiness_json,
+                readiness_status = excluded.readiness_status,
+                readiness_rule_version = excluded.readiness_rule_version,
+                readiness_blocking_count = excluded.readiness_blocking_count,
+                readiness_warning_count = excluded.readiness_warning_count,
+                readiness_evaluated_at_utc = excluded.readiness_evaluated_at_utc,
                 completeness = excluded.completeness,
                 has_fbx = excluded.has_fbx,
                 has_lods = excluded.has_lods,
@@ -611,6 +652,12 @@ public sealed partial class SqliteAssetIndex(
         Add(command, "$tags", JsonSerializer.Serialize(asset.Tags));
         Add(command, "$lastWrite", asset.LastWriteTimeUtc.ToString("O", CultureInfo.InvariantCulture));
         Add(command, "$inventory", JsonSerializer.Serialize(asset.Content));
+        Add(command, "$readiness", JsonSerializer.Serialize(asset.UnrealReadiness));
+        Add(command, "$readinessStatus", (int)asset.UnrealReadiness.Status);
+        Add(command, "$readinessVersion", asset.UnrealReadiness.ReadinessRuleVersion);
+        Add(command, "$readinessBlocking", asset.UnrealReadiness.BlockingCount);
+        Add(command, "$readinessWarnings", asset.UnrealReadiness.WarningCount);
+        Add(command, "$readinessEvaluated", asset.UnrealReadiness.EvaluatedAtUtc?.ToString("O", CultureInfo.InvariantCulture));
         Add(command, "$completeness", (int)asset.Content.Completeness);
         Add(command, "$hasFbx", asset.Content.HasFbx);
         Add(command, "$hasLods", asset.Content.HasLods);
@@ -684,6 +731,18 @@ public sealed partial class SqliteAssetIndex(
                 Add(command, "$path", component.Path);
                 await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             }
+        }
+    }
+
+    private static UnrealReadinessEvaluation ReadReadiness(string json)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<UnrealReadinessEvaluation>(json) ?? UnrealReadinessEvaluation.Unknown;
+        }
+        catch (JsonException)
+        {
+            return UnrealReadinessEvaluation.Unknown;
         }
     }
     private static void Add(SqliteCommand command, string name, object? value) =>

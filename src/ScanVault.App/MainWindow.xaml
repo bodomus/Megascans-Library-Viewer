@@ -14,7 +14,7 @@
 
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="124" />
+            <RowDefinition Height="154" />
             <RowDefinition Height="*" />
             <RowDefinition Height="30" />
         </Grid.RowDefinitions>
@@ -43,7 +43,7 @@
                     <ComboBox Grid.Column="2" Margin="0,0,12,0" ItemsSource="{Binding SortOptions}" DisplayMemberPath="Label" SelectedValuePath="Mode" SelectedValue="{Binding SortMode, Mode=OneWay}" SelectionChanged="OnSortSelectionChanged" ToolTip="Sort visible assets" />
                     <TextBlock Grid.Column="3" Text="{Binding StatusText}" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" TextAlignment="Right" TextTrimming="CharacterEllipsis" />
                 </Grid>
-                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,5,0,0">
+                <WrapPanel Grid.Row="1" Margin="0,5,0,0">
                     <TextBlock Text="CONTENT:" Foreground="{StaticResource TextSecondary}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"/>
                     <CheckBox Content="CHECK ALL" IsChecked="{Binding FilterAll, Mode=OneWay}" Command="{Binding ToggleAllInventoryFiltersCommand}" Margin="0,0,12,0" Foreground="{StaticResource TextCheckBox}"/>
                     <CheckBox Content="Has FBX" IsChecked="{Binding FilterHasFbx, Mode=OneWay}" Command="{Binding ToggleHasFbxCommand}" Margin="0,0,12,0" Foreground="{StaticResource TextCheckBox}"/>
@@ -52,8 +52,19 @@
                     <CheckBox Content="Atlas" IsChecked="{Binding FilterHasAtlas, Mode=OneWay}" Command="{Binding ToggleHasAtlasCommand}" Margin="0,0,12,0" Foreground="{StaticResource TextCheckBox}"/>
                     <CheckBox Content="Complete" IsChecked="{Binding FilterComplete, Mode=OneWay}" Command="{Binding ToggleCompleteCommand}" Margin="0,0,12,0" Foreground="{StaticResource TextCheckBox}"/>
                     <CheckBox Content="Incomplete" IsChecked="{Binding FilterIncomplete, Mode=OneWay}" Command="{Binding ToggleIncompleteCommand}" Margin="0,0,12,0" Foreground="{StaticResource TextCheckBox}"/>
-                    <CheckBox Content="Ambiguous" IsChecked="{Binding FilterAmbiguous, Mode=OneWay}" Command="{Binding ToggleAmbiguousCommand}" Foreground="{StaticResource TextCheckBox}" />
-                </StackPanel>
+                    <CheckBox Content="Ambiguous" IsChecked="{Binding FilterAmbiguous, Mode=OneWay}" Command="{Binding ToggleAmbiguousCommand}" Margin="0,0,18,0" Foreground="{StaticResource TextCheckBox}" />
+                    <TextBlock Text="UE:" Foreground="{StaticResource Accent}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <CheckBox Content="Ready" IsChecked="{Binding FilterUnrealReady, Mode=OneWay}" Command="{Binding ToggleUnrealReadyCommand}" Margin="0,0,12,0" Foreground="{StaticResource TextCheckBox}"/>
+                    <CheckBox Content="Warnings" IsChecked="{Binding FilterUnrealReadyWithWarnings, Mode=OneWay}" Command="{Binding ToggleUnrealReadyWithWarningsCommand}" Margin="0,0,12,0" Foreground="{StaticResource TextCheckBox}"/>
+                    <CheckBox Content="Not Ready" IsChecked="{Binding FilterUnrealNotReady, Mode=OneWay}" Command="{Binding ToggleUnrealNotReadyCommand}" Margin="0,0,12,0" Foreground="{StaticResource TextCheckBox}"/>
+                    <CheckBox Content="Unknown" IsChecked="{Binding FilterUnrealUnknown, Mode=OneWay}" Command="{Binding ToggleUnrealUnknownCommand}" Margin="0,0,12,0" Foreground="{StaticResource TextCheckBox}"/>
+                    <CheckBox Content="N/A" IsChecked="{Binding FilterUnrealNotApplicable, Mode=OneWay}" Command="{Binding ToggleUnrealNotApplicableCommand}" Margin="0,0,12,0" Foreground="{StaticResource TextCheckBox}"/>
+                    <CheckBox Content="Missing Mesh" IsChecked="{Binding FilterUnrealMissingMesh, Mode=OneWay}" Command="{Binding ToggleUnrealMissingMeshCommand}" Margin="0,0,12,0" Foreground="{StaticResource TextCheckBox}"/>
+                    <CheckBox Content="Missing Normal" IsChecked="{Binding FilterUnrealMissingNormal, Mode=OneWay}" Command="{Binding ToggleUnrealMissingNormalCommand}" Margin="0,0,12,0" Foreground="{StaticResource TextCheckBox}"/>
+                    <CheckBox Content="Missing LODs" IsChecked="{Binding FilterUnrealMissingLods, Mode=OneWay}" Command="{Binding ToggleUnrealMissingLodsCommand}" Margin="0,0,12,0" Foreground="{StaticResource TextCheckBox}"/>
+                    <CheckBox Content="Blocking" IsChecked="{Binding FilterUnrealBlockingIssues, Mode=OneWay}" Command="{Binding ToggleUnrealBlockingIssuesCommand}" Margin="0,0,12,0" Foreground="{StaticResource TextCheckBox}"/>
+                    <CheckBox Content="Warnings" IsChecked="{Binding FilterUnrealWarnings, Mode=OneWay}" Command="{Binding ToggleUnrealWarningsCommand}" Foreground="{StaticResource TextCheckBox}"/>
+                </WrapPanel>
                 <Border Grid.Row="2" Margin="0,6,0,0" Padding="7,4" Background="#292E37" CornerRadius="4">
                     <DockPanel>
                         <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
@@ -282,6 +293,10 @@
                                             </Border>
                                         </DataTemplate></ItemsControl.ItemTemplate>
                                     </ItemsControl>
+                                    <Border Background="{Binding UnrealReadinessBrush}" CornerRadius="3" Padding="4,1" Margin="0,2,0,2"
+                                            HorizontalAlignment="Left" ToolTip="{Binding UnrealReadinessTooltip}">
+                                        <TextBlock Text="{Binding UnrealReadinessBadge}" FontSize="9" FontWeight="SemiBold" Foreground="White" />
+                                    </Border>
                                     <TextBlock Text="{Binding ContentWarning}" FontSize="10" FontWeight="Bold" Foreground="#FFB3A7"
                                                Visibility="{Binding HasContentWarning, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                 </StackPanel>
@@ -336,6 +351,8 @@
                                                 <TextBlock Text="{Binding ContentMapsDisplay}" Foreground="White" TextWrapping="Wrap" />
                                                 <TextBlock Text="{Binding ContentStatusDisplay}" Foreground="{StaticResource Accent}" />
                                                 <TextBlock Text="{Binding ContentIssuesDisplay}" Foreground="#FFB3A7" />
+                                                <TextBlock Text="{Binding UnrealReadinessStatusDisplay}" Foreground="{StaticResource Accent}" ToolTip="{Binding UnrealReadinessTooltip}" />
+                                                <TextBlock Text="{Binding UnrealReadinessCountsDisplay}" Foreground="#FFCF88" TextWrapping="Wrap" />
                                                 <Button Content="Show content inventory" Command="{Binding ShowContentInventoryCommand}"
                                                         HorizontalAlignment="Left" Padding="8,3" Margin="0,5,0,0" />
                                                 <TextBlock Text="Folder" FontWeight="SemiBold" Foreground="White"

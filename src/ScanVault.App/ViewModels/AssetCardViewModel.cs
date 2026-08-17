@@ -52,12 +52,12 @@ public sealed class AssetCardViewModel : ObservableObject, IDisposable
         {
             var categories = Asset.Categories.Where(category =>
                 !StringComparer.OrdinalIgnoreCase.Equals(MetadataNormalizer.ResolveAssetType([category]).Canonical, Asset.AssetType)).Take(2).ToArray();
-            return categories.Length == 0 ? Asset.AssetType : $"{Asset.AssetType} · {string.Join(" / ", categories)}";
+            return categories.Length == 0 ? Asset.AssetType : $"{Asset.AssetType} ï¿½ {string.Join(" / ", categories)}";
         }
     }
 
-    public string CompactDetails => Asset.MaxResolution is { } resolution ? $"{resolution.ToCompactString()} · {IdDisplay}" : IdDisplay;
-    public string CategoriesDisplay => Asset.Categories.Count == 0 ? "—" : string.Join(" / ", Asset.Categories);
+    public string CompactDetails => Asset.MaxResolution is { } resolution ? $"{resolution.ToCompactString()} ï¿½ {IdDisplay}" : IdDisplay;
+    public string CategoriesDisplay => Asset.Categories.Count == 0 ? "ï¿½" : string.Join(" / ", Asset.Categories);
     public string? BiomeDisplay => Asset.Biome;
     public string? RegionDisplay => Asset.Region;
     public string? PhysicalSizeDisplay => Asset.PhysicalSize;
@@ -77,6 +77,31 @@ public sealed class AssetCardViewModel : ObservableObject, IDisposable
     public bool HasColors => ColorsDisplay is not null;
     public bool HasIndustries => IndustriesDisplay is not null;
     public IReadOnlyList<string> Badges { get; }
+    public string UnrealReadinessBadge => Asset.UnrealReadiness.Status switch
+    {
+        UnrealReadinessStatus.Ready => "UE Ready",
+        UnrealReadinessStatus.ReadyWithWarnings => "UE Warnings",
+        UnrealReadinessStatus.NotReady => "Not UE Ready",
+        UnrealReadinessStatus.NotApplicable => "UE N/A",
+        UnrealReadinessStatus.Unknown => "UE Unknown",
+        _ => Asset.UnrealReadiness.Status.ToString()
+    };
+    public string UnrealReadinessTooltip => string.Join(Environment.NewLine,
+        new[]
+        {
+            $"Status: {UnrealReadinessBadge}",
+            $"Blocking: {Asset.UnrealReadiness.BlockingCount}",
+            $"Warnings: {Asset.UnrealReadiness.WarningCount}",
+            $"Rule version: {Asset.UnrealReadiness.ReadinessRuleVersion}"
+        }.Concat(Asset.UnrealReadiness.Reasons.Select(static reason => $"{reason.Severity} {reason.Code}: {reason.Message}")));
+    public Brush UnrealReadinessBrush => Asset.UnrealReadiness.Status switch
+    {
+        UnrealReadinessStatus.Ready => new SolidColorBrush(Color.FromRgb(69, 142, 88)),
+        UnrealReadinessStatus.ReadyWithWarnings => new SolidColorBrush(Color.FromRgb(176, 134, 45)),
+        UnrealReadinessStatus.NotReady => new SolidColorBrush(Color.FromRgb(168, 74, 74)),
+        UnrealReadinessStatus.NotApplicable => new SolidColorBrush(Color.FromRgb(82, 91, 105)),
+        _ => new SolidColorBrush(Color.FromRgb(92, 103, 121))
+    };
     public bool HasContentWarning => Asset.Content.Completeness is AssetCompletenessStatus.Partial or AssetCompletenessStatus.MissingCriticalFiles or AssetCompletenessStatus.Ambiguous;
     public string ContentWarning => Asset.Content.Completeness switch
     {
@@ -91,7 +116,7 @@ public sealed class AssetCardViewModel : ObservableObject, IDisposable
         get
         {
             var lods = Asset.Content.Variants.SelectMany(static variant => variant.Meshes).Select(static mesh => mesh.Lod).Distinct().Order().ToArray();
-            return lods.Length == 0 ? "LODs: —" : $"LODs: {string.Join(", ", lods.Select(static lod => $"LOD{lod}"))}";
+            return lods.Length == 0 ? "LODs: ï¿½" : $"LODs: {string.Join(", ", lods.Select(static lod => $"LOD{lod}"))}";
         }
     }
     public string ContentMeshesDisplay
@@ -99,7 +124,7 @@ public sealed class AssetCardViewModel : ObservableObject, IDisposable
         get
         {
             var formats = Asset.Content.Variants.SelectMany(static variant => variant.Meshes).Select(static mesh => mesh.Format.ToString().ToUpperInvariant()).Distinct().Order().ToArray();
-            return formats.Length == 0 ? "Meshes: —" : $"Meshes: {string.Join(", ", formats)}";
+            return formats.Length == 0 ? "Meshes: ï¿½" : $"Meshes: {string.Join(", ", formats)}";
         }
     }
     public string ContentSetsDisplay
@@ -107,7 +132,7 @@ public sealed class AssetCardViewModel : ObservableObject, IDisposable
         get
         {
             var sets = Asset.Content.TextureSets.Select(static set => set.Kind).Distinct().Order().ToArray();
-            return sets.Length == 0 ? "Texture sets: —" : $"Texture sets: {string.Join(", ", sets)}";
+            return sets.Length == 0 ? "Texture sets: ï¿½" : $"Texture sets: {string.Join(", ", sets)}";
         }
     }
     public string ContentMapsDisplay
@@ -115,11 +140,13 @@ public sealed class AssetCardViewModel : ObservableObject, IDisposable
         get
         {
             var maps = Asset.Content.TextureSets.SelectMany(static set => set.Components).Select(static component => component.MapType).Distinct().Order().ToArray();
-            return maps.Length == 0 ? "Maps: —" : $"Maps: {string.Join(", ", maps)}";
+            return maps.Length == 0 ? "Maps: ï¿½" : $"Maps: {string.Join(", ", maps)}";
         }
     }
     public string ContentStatusDisplay => $"Status: {Asset.Content.Completeness}";
     public string ContentIssuesDisplay => $"Issues: {Asset.Content.Issues.Count}";
+    public string UnrealReadinessStatusDisplay => $"UE: {UnrealReadinessBadge}";
+    public string UnrealReadinessCountsDisplay => $"Blocking: {Asset.UnrealReadiness.BlockingCount}; Warnings: {Asset.UnrealReadiness.WarningCount}; Rules: v{Asset.UnrealReadiness.ReadinessRuleVersion}";
 
     public ImageSource? Thumbnail { get => thumbnail; private set => SetProperty(ref thumbnail, value); }
     public bool IsHoverOpen { get => isHoverOpen; private set => SetProperty(ref isHoverOpen, value); }
