@@ -30,7 +30,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly ILogger<ScanHistoryViewModel> scanHistoryLogger;
     private readonly ILogger<ExportReportViewModel> exportReportLogger;
     private readonly ILogger<AssetComparisonViewModel> assetComparisonLogger;
+    private readonly ILogger<DuplicateAnalysisViewModel> duplicateAnalysisLogger;
     private readonly IReportExportService reportExportService;
+    private readonly IDuplicateAnalysisService duplicateAnalysisService;
     private readonly ApplicationBuildInfo buildInfo;
     private IReadOnlyList<AssetSummary> allAssets = [];
     private CancellationTokenSource? scanCancellation;
@@ -62,6 +64,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ISettingsStore settingsStore,
         ISmartCollectionStore smartCollectionStore,
         IReportExportService reportExportService,
+        IDuplicateAnalysisService duplicateAnalysisService,
         IImageLoader imageLoader,
         IAssetInteractionService interactions,
         ApplicationBuildInfo buildInfo,
@@ -76,6 +79,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         this.diagnosticsService = diagnosticsService;
         this.smartCollectionStore = smartCollectionStore;
         this.reportExportService = reportExportService;
+        this.duplicateAnalysisService = duplicateAnalysisService;
         this.buildInfo = buildInfo;
         this.logger = logger;
         cardLogger = loggerFactory.CreateLogger<AssetCardViewModel>();
@@ -84,6 +88,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Settings = new(settingsStore);
         exportReportLogger = loggerFactory.CreateLogger<ExportReportViewModel>();
         assetComparisonLogger = loggerFactory.CreateLogger<AssetComparisonViewModel>();
+        duplicateAnalysisLogger = loggerFactory.CreateLogger<DuplicateAnalysisViewModel>();
         WindowTitle = buildInfo.WindowTitle;
         ProductVersion = buildInfo.ProductVersion;
         Preview = new(imageLoader);
@@ -960,6 +965,21 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         await viewModel.LoadAsync(cancellationToken);
         return viewModel;
     }
+
+    public async Task<DuplicateAnalysisViewModel> CreateDuplicateAnalysisViewModelAsync(CancellationToken cancellationToken)
+    {
+        var viewModel = new DuplicateAnalysisViewModel(
+            duplicateAnalysisService,
+            index,
+            Settings.Current,
+            allAssets.ToArray(),
+            interactions,
+            OpenComparisonPair,
+            duplicateAnalysisLogger);
+        await viewModel.LoadAsync(cancellationToken);
+        return viewModel;
+    }
+
     public async Task<DiagnosticsViewModel> CreateDiagnosticsViewModelAsync(
         CancellationToken cancellationToken)
     {
@@ -1222,6 +1242,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         viewModel.Disposed += OnComparisonDisposed;
         comparisonSessions.Add(viewModel);
         AssetComparisonRequested?.Invoke(viewModel);
+    }
+
+    private void OpenComparisonPair(AssetSummary left, AssetSummary right)
+    {
+        comparisonLeft = left;
+        comparisonRight = right;
+        NotifyComparisonState();
+        OpenComparison();
     }
 
     private AssetSummary? ResolveCurrentAsset(string assetId) =>

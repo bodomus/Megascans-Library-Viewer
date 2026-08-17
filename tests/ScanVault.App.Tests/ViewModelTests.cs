@@ -276,6 +276,7 @@ public sealed class ViewModelTests : IDisposable
             settingsStore,
             new MemorySmartCollectionStore(),
             new NoOpReportExportService(),
+            new NoOpDuplicateAnalysisService(),
             new NullImageLoader(),
             interactions,
             buildInfo,
@@ -409,6 +410,33 @@ public sealed class ViewModelTests : IDisposable
         public Task<ReportExportResult> ExportAsync(ReportExportRequest request, IProgress<ReportProgress>? progress,
             CancellationToken cancellationToken) =>
             Task.FromResult(new ReportExportResult(request.DestinationPath, null, request.Assets.Count, 0, 0, TimeSpan.Zero));
+    }
+
+    private sealed class NoOpDuplicateAnalysisService : IDuplicateAnalysisService
+    {
+        public Task<DuplicateAnalysisResult> AnalyzeAsync(
+            LibrarySettings settings,
+            IProgress<DuplicateAnalysisProgress>? progress,
+            CancellationToken cancellationToken)
+        {
+            var run = new DuplicateAnalysisRun(
+                "test",
+                settings.LibraryRoot,
+                settings.LibraryRoot,
+                DateTimeOffset.UtcNow,
+                DateTimeOffset.UtcNow,
+                DuplicateAnalysisStatus.Completed,
+                false,
+                0,
+                0,
+                0,
+                0,
+                0,
+                TimeSpan.Zero,
+                null,
+                new(0, 0, 0, 0, 0, 0));
+            return Task.FromResult(new DuplicateAnalysisResult(run, []));
+        }
     }
 
     private sealed class NullImageLoader : IImageLoader

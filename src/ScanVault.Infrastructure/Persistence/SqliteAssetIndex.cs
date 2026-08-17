@@ -13,7 +13,7 @@ public sealed partial class SqliteAssetIndex(
     ScanVaultPaths paths,
     ILogger<SqliteAssetIndex> logger) : IAssetIndex
 {
-    public const int CurrentSchemaVersion = 4;
+    public const int CurrentSchemaVersion = 5;
     public const int CurrentNormalizationVersion = 3;
     private static readonly bool ProviderInitialized = InitializeProvider();
     private readonly ScanVaultPaths resolvedPaths = paths;
@@ -241,6 +241,7 @@ public sealed partial class SqliteAssetIndex(
                 draftResult.InaccessibleDirectories.Count);
             await PersistCompletedHistoryAsync(connection, transaction, scanRunId, history, draftResult, completedAtUtc, cancellationToken)
                 .ConfigureAwait(false);
+            await MarkDuplicateAnalysesStaleAsync(connection, transaction, libraryRoot, cancellationToken).ConfigureAwait(false);
 
             await using var scanState = connection.CreateCommand();
             scanState.Transaction = transaction;
@@ -302,7 +303,7 @@ public sealed partial class SqliteAssetIndex(
                 version INTEGER NOT NULL,
                 normalization_version INTEGER NOT NULL
             );
-            INSERT INTO schema_info(version, normalization_version) VALUES (4, 3);
+            INSERT INTO schema_info(version, normalization_version) VALUES (5, 3);
 
             CREATE TABLE assets (
                 id TEXT PRIMARY KEY COLLATE NOCASE,
@@ -390,6 +391,7 @@ public sealed partial class SqliteAssetIndex(
         try
         {
             await CreateHistoryTablesAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
+            await CreateDuplicateAnalysisTablesAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         }
         catch

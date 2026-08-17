@@ -127,4 +127,10 @@ internal static partial class InfrastructureLog
         ILogger logger,
         string databasePath,
         Exception exception);
+
+    [LoggerMessage(1201, LogLevel.Error, "Duplicate analysis failed for {LibraryRoot}")]
+    public static partial void DuplicateAnalysisFailed(
+        ILogger logger,
+        string libraryRoot,
+        Exception exception);
 }

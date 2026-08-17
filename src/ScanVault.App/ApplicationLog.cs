@@ -59,4 +59,7 @@ internal static partial class ApplicationLog
 
     [LoggerMessage(2012, LogLevel.Warning, "Smart collection count refresh failed")]
     public static partial void SmartCollectionCountRefreshFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(2013, LogLevel.Error, "Duplicate analysis command failed")]
+    public static partial void DuplicateAnalysisCommandFailed(ILogger logger, Exception exception);
 }

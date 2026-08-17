@@ -34,6 +34,18 @@ public interface IAssetIndex
     Task<IReadOnlyList<ScanRunSummary>> GetScanRunsAsync(int limit, CancellationToken cancellationToken);
     Task<IReadOnlyList<ScanChangeSummary>> GetScanChangesAsync(string scanRunId, AssetChangeKind kind, int limit, CancellationToken cancellationToken);
     Task<IndexUpdateResult> ReplaceLibraryAsync(string libraryRoot, IReadOnlyList<AssetSummary> assets, ScanResult draftResult, string scanRunId, CancellationToken cancellationToken);
+    Task<DuplicateAnalysisRun> BeginDuplicateAnalysisRunAsync(string libraryRoot, int totalAssets, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("Duplicate analysis persistence is not available for this index implementation.");
+    Task FinishDuplicateAnalysisRunAsync(string runId, DuplicateAnalysisStatus status, string? errorMessage, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("Duplicate analysis persistence is not available for this index implementation.");
+    Task PersistDuplicateAnalysisAsync(DuplicateAnalysisPersistRequest request, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("Duplicate analysis persistence is not available for this index implementation.");
+    Task<DuplicateAnalysisResult?> GetLatestDuplicateAnalysisAsync(string libraryRoot, bool includeStale, CancellationToken cancellationToken) =>
+        Task.FromResult<DuplicateAnalysisResult?>(null);
+    Task<FileHashCacheEntry?> GetFileHashAsync(string normalizedPath, string hashAlgorithm, int hashAlgorithmVersion, CancellationToken cancellationToken) =>
+        Task.FromResult<FileHashCacheEntry?>(null);
+    Task UpsertFileHashAsync(FileHashCacheEntry entry, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("File hash persistence is not available for this index implementation.");
 }
 
 /// <summary>Persists settings outside the source repository.</summary>
@@ -55,3 +67,20 @@ public interface ILibraryScanService
 {
     Task<ScanResult> ScanAsync(LibrarySettings settings, IProgress<ScanProgress>? progress, CancellationToken cancellationToken);
 }
+
+public interface IDuplicateAnalysisService
+{
+    Task<DuplicateAnalysisResult> AnalyzeAsync(
+        LibrarySettings settings,
+        IProgress<DuplicateAnalysisProgress>? progress,
+        CancellationToken cancellationToken);
+}
+
+public sealed record FileHashCacheEntry(
+    string NormalizedPath,
+    long FileSizeBytes,
+    DateTimeOffset LastWriteTimeUtc,
+    string HashAlgorithm,
+    int HashAlgorithmVersion,
+    string ContentHash,
+    DateTimeOffset ComputedAtUtc);

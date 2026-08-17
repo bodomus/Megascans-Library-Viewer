@@ -35,6 +35,7 @@
                         <Button Content="About / Diagnostics" Click="OnDiagnosticsClick" Padding="14,6" Margin="0,0,8,0" />
                         <Button Content="Scan History" Click="OnScanHistoryClick" Padding="14,6" Margin="0,0,8,0" />
                         <Button x:Name="ExportReportButton" Content="Export Report" Click="OnExportReportClick" Padding="14,6" Margin="0,0,8,0" />
+                        <Button Content="Duplicate Detection" Click="OnDuplicateDetectionClick" Padding="14,6" Margin="0,0,8,0" />
                         <Button Content="Rescan" Command="{Binding RescanCommand}" Padding="14,6" Margin="0,0,8,0" />
                         <Button Content="Cancel" Command="{Binding CancelScanCommand}" Padding="14,6" Margin="0,0,14,0" />
                     </StackPanel>

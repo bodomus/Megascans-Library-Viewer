@@ -76,7 +76,7 @@ public sealed partial class SqliteAssetIndex
                 return CorruptedCompatibility("Required index tables are missing.");
             }
 
-            if (schemaVersion is 1 or 2 or 3)
+            if (schemaVersion is 1 or 2 or 3 or 4)
             {
                 return new(
                     IndexCompatibilityState.RequiresMigration,
@@ -103,6 +103,14 @@ public sealed partial class SqliteAssetIndex
                 if (!await TableExistsAsync(connection, historyTable, cancellationToken).ConfigureAwait(false))
                 {
                     return CorruptedCompatibility($"Required scan history table {historyTable} is missing.");
+                }
+            }
+
+            foreach (var duplicateTable in new[] { "file_hash_cache", "duplicate_analysis_runs", "duplicate_groups", "duplicate_group_members", "duplicate_reasons" })
+            {
+                if (!await TableExistsAsync(connection, duplicateTable, cancellationToken).ConfigureAwait(false))
+                {
+                    return CorruptedCompatibility($"Required duplicate analysis table {duplicateTable} is missing.");
                 }
             }
 
@@ -226,6 +234,11 @@ public sealed partial class SqliteAssetIndex
         if (fromVersion == 3)
         {
             await MigrateVersionThreeAsync(connection, cancellationToken).ConfigureAwait(false);
+            fromVersion = 4;
+        }
+        if (fromVersion == 4)
+        {
+            await MigrateVersionFourAsync(connection, cancellationToken).ConfigureAwait(false);
         }
         InfrastructureLog.IndexMigrationCompleted(logger, resolvedPaths.DatabasePath, CurrentSchemaVersion);
     }

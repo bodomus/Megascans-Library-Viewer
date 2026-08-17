@@ -139,6 +139,33 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void OnDuplicateDetectionClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel viewModel)
+        {
+            return;
+        }
+
+        try
+        {
+            var duplicateAnalysis = await viewModel.CreateDuplicateAnalysisViewModelAsync(CancellationToken.None);
+            var window = new DuplicateAnalysisWindow
+            {
+                Owner = this,
+                DataContext = duplicateAnalysis
+            };
+            window.Show();
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(
+                $"Duplicate Detection could not be opened.{Environment.NewLine}{exception.Message}",
+                "ScanVault duplicate detection",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+    }
+
     private async void OnDiagnosticsClick(object sender, RoutedEventArgs e)
     {
         if (DataContext is not MainViewModel viewModel)
