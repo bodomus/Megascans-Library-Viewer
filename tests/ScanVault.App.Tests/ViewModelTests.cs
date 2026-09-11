@@ -6,6 +6,7 @@ using ScanVault.App.Services;
 using ScanVault.App.ViewModels;
 using ScanVault.Core.Abstractions;
 using ScanVault.Core.Models;
+using ScanVault.Core.Policies;
 using ScanVault.Infrastructure.Configuration;
 
 namespace ScanVault.App.Tests;
@@ -317,13 +318,164 @@ public sealed class ViewModelTests : IDisposable
         Assert.Same(right, comparedRight);
     }
 
+    // Integration test: global search ignores the selected physical folder and local search filter.
+    [Fact]
+    public async Task GlobalSearchSpansFoldersAndIgnoresLocalScope()
+    {
+        var nature = Path.Combine(root, "Nature");
+        var urban = Path.Combine(root, "Urban");
+        var assets = new[]
+        {
+            CreateAsset("fern", "Forest Fern", nature, "plant"),
+            CreateAsset("brick", "Brick Wall", urban, "masonry")
+        };
+        using var viewModel = CreateMainViewModel(assets, new(new(root)), new RecordingInteractions());
+        await viewModel.InitializeAsync(CancellationToken.None);
+        viewModel.SelectFolder(Assert.Single(Assert.Single(viewModel.Folders).Children, node => node.Name == "Nature"));
+        viewModel.SearchText = "Fern";
+
+        viewModel.GlobalSearchText = "Brick";
+        await viewModel.WaitForGlobalSearchAsync();
+
+        Assert.Equal("brick", Assert.Single(viewModel.Assets).Asset.Id);
+        Assert.Contains("Name", Assert.Single(viewModel.Assets).GlobalSearchMatch, StringComparison.Ordinal);
+    }
+
+    // Integration test: global result type filtering composes over the global match set.
+    [Fact]
+    public async Task GlobalSearchTypeFilterHidesOtherAssetTypes()
+    {
+        var assets = new[]
+        {
+            CreateAsset("mesh", "Wood Mesh", root, "wood") with { AssetType = "3D Asset" },
+            CreateAsset("material", "Wood Material", root, "wood") with { AssetType = "Surface" }
+        };
+        using var viewModel = CreateMainViewModel(assets, new(new(root)), new RecordingInteractions());
+        await viewModel.InitializeAsync(CancellationToken.None);
+        viewModel.GlobalSearchText = "Wood";
+        await viewModel.WaitForGlobalSearchAsync();
+
+        viewModel.GlobalSearchType = GlobalSearchAssetType.Mesh;
+
+        Assert.Equal("mesh", Assert.Single(viewModel.Assets).Asset.Id);
+    }
+
+    // Integration test: ViewModel global search publishes matches from indexed ID, path, tag and file fields.
+    [Fact]
+    public async Task GlobalSearchPublishesMatchesFromIndexedFields()
+    {
+        var folder = Path.Combine(root, "Wood", "Twigs");
+        var asset = CreateAsset("asset-42", "Wood Kit", folder, "gnarled") with
+        {
+            Content = new(
+                [new("VAR2", [new(Path.Combine(folder, "twig_LOD1.fbx"), "twig_LOD1.fbx", "VAR2", 1, MeshFormat.Fbx)])],
+                [], [], AssetCompletenessStatus.Complete, [])
+        };
+        using var viewModel = CreateMainViewModel([asset], new(new(root)), new RecordingInteractions());
+        await viewModel.InitializeAsync(CancellationToken.None);
+
+        foreach (var query in new[] { "asset-42", "Twigs", "gnarled", "LOD1" })
+        {
+            viewModel.GlobalSearchText = query;
+            await viewModel.WaitForGlobalSearchAsync();
+            Assert.Equal("asset-42", Assert.Single(viewModel.Assets).Asset.Id);
+        }
+    }
+
+    // Regression test: clearing global search restores the preserved local folder and text filters.
+    [Fact]
+    public async Task ClearingGlobalSearchRestoresPreviousLocalView()
+    {
+        var nature = Path.Combine(root, "Nature");
+        var urban = Path.Combine(root, "Urban");
+        var assets = new[]
+        {
+            CreateAsset("fern", "Forest Fern", nature, "plant"),
+            CreateAsset("brick", "Brick Wall", urban, "masonry")
+        };
+        using var viewModel = CreateMainViewModel(assets, new(new(root)), new RecordingInteractions());
+        await viewModel.InitializeAsync(CancellationToken.None);
+        viewModel.SelectFolder(Assert.Single(Assert.Single(viewModel.Folders).Children, node => node.Name == "Nature"));
+        viewModel.SearchText = "Fern";
+        viewModel.GlobalSearchText = "Brick";
+        await viewModel.WaitForGlobalSearchAsync();
+
+        viewModel.ClearGlobalSearchCommand.Execute(null);
+
+        Assert.False(viewModel.IsGlobalSearchActive);
+        Assert.Equal("fern", Assert.Single(viewModel.Assets).Asset.Id);
+        Assert.Equal(nature, viewModel.SelectedFolderPath);
+        Assert.Equal("Fern", viewModel.SearchText);
+    }
+
+    // Regression test: a stale global-search completion cannot overwrite the latest result.
+    [Fact]
+    public async Task StaleGlobalSearchDoesNotReplaceNewerResult()
+    {
+        var first = CreateAsset("first", "First", root, "one");
+        var second = CreateAsset("second", "Second", root, "two");
+        var search = new ControlledSearchService(first, second);
+        using var viewModel = CreateMainViewModel([first, second], new(new(root)), new RecordingInteractions(), searchService: search);
+        await viewModel.InitializeAsync(CancellationToken.None);
+        viewModel.GlobalSearchText = "First";
+        await search.FirstStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        viewModel.GlobalSearchText = "Second";
+        await viewModel.WaitForGlobalSearchAsync();
+        search.ReleaseFirst();
+        await search.FirstCompleted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal("second", Assert.Single(viewModel.Assets).Asset.Id);
+    }
+
+    // Regression test: search failures remain visible state instead of escaping through the UI command path.
+    [Fact]
+    public async Task GlobalSearchFailureIsCapturedForTheUser()
+    {
+        using var viewModel = CreateMainViewModel(
+            [CreateAsset("one", "One", root, "tag")],
+            new(new(root)),
+            new RecordingInteractions(),
+            searchService: new FailingSearchService());
+        await viewModel.InitializeAsync(CancellationToken.None);
+
+        viewModel.GlobalSearchText = "One";
+        await viewModel.WaitForGlobalSearchAsync();
+
+        Assert.True(viewModel.HasGlobalSearchError);
+        Assert.Contains("synthetic", viewModel.GlobalSearchError, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(viewModel.Assets);
+    }
+
+    // UI test: Show in Library clears global mode, restores local filtering and requests visual tree selection.
+    [Fact]
+    public async Task ShowInLibraryNavigatesToTheMatchedAssetFolder()
+    {
+        var folder = Path.Combine(root, "Nature", "Wood");
+        var asset = CreateAsset("wood", "Wooden Twigs", folder, "wood");
+        using var viewModel = CreateMainViewModel([asset], new(new(root)), new RecordingInteractions());
+        await viewModel.InitializeAsync(CancellationToken.None);
+        string? requestedFolder = null;
+        viewModel.LibraryLocationRequested += value => requestedFolder = value;
+        viewModel.GlobalSearchText = "Wooden";
+        await viewModel.WaitForGlobalSearchAsync();
+
+        Assert.Single(viewModel.Assets).ShowInLibraryCommand.Execute(null);
+
+        Assert.False(viewModel.IsGlobalSearchActive);
+        Assert.Equal(folder, viewModel.SelectedFolderPath);
+        Assert.Equal(folder, requestedFolder);
+        Assert.Equal(asset.JsonPath, viewModel.SelectedCard?.Asset.JsonPath);
+    }
+
     public void Dispose() => Directory.Delete(root, recursive: true);
 
     private static MainViewModel CreateMainViewModel(
         IReadOnlyList<AssetSummary> assets,
         MemorySettingsStore settingsStore,
         RecordingInteractions interactions,
-        IndexCompatibilityInfo? compatibility = null)
+        IndexCompatibilityInfo? compatibility = null,
+        IGlobalAssetSearchService? searchService = null)
     {
         var index = new MemoryIndex(assets, compatibility: compatibility);
         var buildInfo = ApplicationBuildInfo.Create(
@@ -340,6 +492,7 @@ public sealed class ViewModelTests : IDisposable
             Path.Combine(Path.GetTempPath(), "ScanVault.App.Tests", "cache"));
         return new(
             index,
+            searchService ?? new GlobalAssetSearchService(),
             new NoOpScanService(),
             settingsStore,
             new MemorySmartCollectionStore(),
@@ -601,6 +754,40 @@ public sealed class ViewModelTests : IDisposable
             int decodePixelWidth,
             CancellationToken cancellationToken) =>
             Task.FromResult<ImageSource?>(null);
+    }
+
+    private sealed class ControlledSearchService(AssetSummary first, AssetSummary second) : IGlobalAssetSearchService
+    {
+        private readonly TaskCompletionSource releaseFirst = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource FirstStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource FirstCompleted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public void ReleaseFirst() => releaseFirst.TrySetResult();
+
+        public async Task<IReadOnlyList<GlobalAssetSearchMatch>> SearchAsync(
+            IReadOnlyList<AssetSummary> assets,
+            string query,
+            CancellationToken cancellationToken)
+        {
+            if (query == "First")
+            {
+                FirstStarted.TrySetResult();
+                await releaseFirst.Task;
+                FirstCompleted.TrySetResult();
+                return [new(first, "Name", first.Name)];
+            }
+
+            return [new(second, "Name", second.Name)];
+        }
+    }
+
+    private sealed class FailingSearchService : IGlobalAssetSearchService
+    {
+        public Task<IReadOnlyList<GlobalAssetSearchMatch>> SearchAsync(
+            IReadOnlyList<AssetSummary> assets,
+            string query,
+            CancellationToken cancellationToken) =>
+            Task.FromException<IReadOnlyList<GlobalAssetSearchMatch>>(new InvalidOperationException("Synthetic search failure."));
     }
 
     private sealed class RecordingInteractions : IAssetInteractionService

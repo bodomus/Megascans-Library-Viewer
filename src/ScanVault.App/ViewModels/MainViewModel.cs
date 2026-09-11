@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using Microsoft.Extensions.Logging;
 using ScanVault.App.Presentation;
 using ScanVault.App.Services;
@@ -11,6 +12,7 @@ using ScanVault.Core.Policies;
 namespace ScanVault.App.ViewModels;
 
 public sealed record AssetSortOption(AssetSortMode Mode, string Label);
+public sealed record GlobalSearchTypeOption(GlobalSearchAssetType Type, string Label);
 
 public sealed class MainViewModel : ObservableObject, IDisposable
 {
@@ -24,6 +26,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         AssetInventoryFilter.UnrealBlockingIssues | AssetInventoryFilter.UnrealWarnings;
 
     private readonly IAssetIndex index;
+    private readonly IGlobalAssetSearchService globalSearchService;
     private readonly ILibraryScanService scanService;
     private readonly IImageLoader imageLoader;
     private readonly IAssetInteractionService interactions;
@@ -51,6 +54,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private bool isSmartCollectionModified;
     private bool disposed;
     private string searchText = string.Empty;
+    private string globalSearchText = string.Empty;
+    private string? globalSearchError;
+    private bool isGlobalSearchBusy;
+    private GlobalSearchAssetType globalSearchType;
+    private IReadOnlyList<GlobalAssetSearchMatch> globalSearchMatches = [];
+    private CancellationTokenSource? globalSearchCancellation;
+    private Task globalSearchTask = Task.CompletedTask;
+    private long globalSearchGeneration;
     private string? selectedFolderPath;
     private string statusText = "Starting ScanVault…";
     private bool isScanning;
@@ -68,6 +79,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public MainViewModel(
         IAssetIndex index,
+        IGlobalAssetSearchService globalSearchService,
         ILibraryScanService scanService,
         ISettingsStore settingsStore,
         ISmartCollectionStore smartCollectionStore,
@@ -83,6 +95,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ILogger<MainViewModel> logger)
     {
         this.index = index;
+        this.globalSearchService = globalSearchService;
         this.scanService = scanService;
         this.imageLoader = imageLoader;
         this.interactions = interactions;
@@ -127,6 +140,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             () => SelectedCard is not null);
         OpenComparisonCommand = new RelayCommand(OpenComparison, () => CanOpenComparison);
         ClearComparisonCommand = new RelayCommand(ClearComparison, () => ComparisonCount > 0);
+        ApplyGlobalSearchCommand = new AsyncRelayCommand(ApplyGlobalSearchAsync, () => IsGlobalSearchActive);
+        ClearGlobalSearchCommand = new RelayCommand(() => GlobalSearchText = string.Empty, () => IsGlobalSearchActive);
 
         ToggleHasFbxCommand = new AsyncRelayCommand(token => ToggleFilterAsync(AssetInventoryFilter.HasFbx, token));
         ToggleHasLodsCommand = new AsyncRelayCommand(token => ToggleFilterAsync(AssetInventoryFilter.HasLods, token));
@@ -176,6 +191,15 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         new(AssetSortMode.LodCountDescending, "LOD count"),
         new(AssetSortMode.TextureSetCountDescending, "Texture-set count")
     ];
+    public IReadOnlyList<GlobalSearchTypeOption> GlobalSearchTypeOptions { get; } =
+    [
+        new(GlobalSearchAssetType.All, "All types"),
+        new(GlobalSearchAssetType.Mesh, "Mesh"),
+        new(GlobalSearchAssetType.Material, "Material"),
+        new(GlobalSearchAssetType.Texture, "Texture"),
+        new(GlobalSearchAssetType.AtlasOrBillboard, "Atlas / Billboard"),
+        new(GlobalSearchAssetType.Other, "Other")
+    ];
     public SettingsViewModel Settings { get; }
     public PreviewViewModel Preview { get; }
     public AsyncRelayCommand SaveSettingsCommand { get; }
@@ -189,6 +213,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public RelayCommand CreateUnrealImportPackageCommand { get; }
     public RelayCommand OpenComparisonCommand { get; }
     public RelayCommand ClearComparisonCommand { get; }
+    public AsyncRelayCommand ApplyGlobalSearchCommand { get; }
+    public RelayCommand ClearGlobalSearchCommand { get; }
     public AsyncRelayCommand ToggleHasLodsCommand { get; }
     public AsyncRelayCommand ToggleHasBillboardCommand { get; }
     public AsyncRelayCommand ToggleHasAtlasCommand { get; }
@@ -217,6 +243,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public event Action<ContentInventoryViewModel>? ContentInventoryRequested;
     public event Action<AssetComparisonViewModel>? AssetComparisonRequested;
     public event Action<AssetSummary>? UnrealImportPackageRequested;
+    public event Action<string>? LibraryLocationRequested;
     public string ComparisonLeftName => comparisonLeft?.Name ?? "Select first asset";
     public string ComparisonRightName => comparisonRight?.Name ?? "Select second asset";
     public int ComparisonCount => (comparisonLeft is null ? 0 : 1) + (comparisonRight is null ? 0 : 1);
@@ -330,6 +357,72 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             }
         }
     }
+
+    public string GlobalSearchText
+    {
+        get => globalSearchText;
+        set
+        {
+            if (SetProperty(ref globalSearchText, value ?? string.Empty))
+            {
+                OnPropertyChanged(nameof(IsGlobalSearchActive));
+                ClearGlobalSearchCommand.NotifyCanExecuteChanged();
+                ApplyGlobalSearchCommand.NotifyCanExecuteChanged();
+                StartGlobalSearch(debounce: true, CancellationToken.None);
+            }
+        }
+    }
+
+    public GlobalSearchAssetType GlobalSearchType
+    {
+        get => globalSearchType;
+        set
+        {
+            if (SetProperty(ref globalSearchType, value))
+            {
+                RefreshVisibleAssets();
+                OnPropertyChanged(nameof(GlobalSearchStateText));
+            }
+        }
+    }
+
+    public bool IsGlobalSearchActive => !string.IsNullOrWhiteSpace(GlobalSearchText);
+    public bool IsGlobalSearchBusy
+    {
+        get => isGlobalSearchBusy;
+        private set
+        {
+            if (SetProperty(ref isGlobalSearchBusy, value))
+            {
+                ApplyGlobalSearchCommand.NotifyCanExecuteChanged();
+                OnPropertyChanged(nameof(GlobalSearchStateText));
+            }
+        }
+    }
+    public string? GlobalSearchError
+    {
+        get => globalSearchError;
+        private set
+        {
+            if (SetProperty(ref globalSearchError, value))
+            {
+                OnPropertyChanged(nameof(HasGlobalSearchError));
+                OnPropertyChanged(nameof(GlobalSearchStateText));
+            }
+        }
+    }
+    public bool HasGlobalSearchError => GlobalSearchError is not null;
+    public string GlobalSearchStateText => !IsGlobalSearchActive
+        ? "Global search is off"
+        : IsGlobalSearchBusy
+            ? "Searching the entire indexed library…"
+            : HasGlobalSearchError
+                ? "Search failed"
+                : allAssets.Count == 0
+                    ? "No indexed library. Run Rescan first."
+                    : Assets.Count == 0
+                        ? "No results"
+                        : $"Found {Assets.Count:N0} asset(s) across the library";
 
     public AssetSortMode SortMode
     {
@@ -1441,6 +1534,97 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         cancellation.Dispose();
     }
 
+    public Task WaitForGlobalSearchAsync() => globalSearchTask;
+
+    private async Task ApplyGlobalSearchAsync(CancellationToken cancellationToken)
+    {
+        StartGlobalSearch(debounce: false, cancellationToken);
+        await globalSearchTask;
+    }
+
+    private void StartGlobalSearch(bool debounce, CancellationToken externalCancellation)
+    {
+        CancelAndDisposeGlobalSearchCancellation();
+        var generation = ++globalSearchGeneration;
+
+        if (!IsGlobalSearchActive)
+        {
+            globalSearchMatches = [];
+            GlobalSearchError = null;
+            IsGlobalSearchBusy = false;
+            GlobalSearchType = GlobalSearchAssetType.All;
+            RefreshVisibleAssets();
+            OnPropertyChanged(nameof(GlobalSearchStateText));
+            return;
+        }
+
+        globalSearchCancellation = CancellationTokenSource.CreateLinkedTokenSource(externalCancellation);
+        GlobalSearchError = null;
+        IsGlobalSearchBusy = true;
+        globalSearchMatches = [];
+        RefreshVisibleAssets();
+        globalSearchTask = RunGlobalSearchAsync(GlobalSearchText, generation, debounce, globalSearchCancellation.Token);
+    }
+
+    private async Task RunGlobalSearchAsync(string query, long generation, bool debounce, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (debounce)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken);
+            }
+
+            var matches = await globalSearchService.SearchAsync(allAssets, query, cancellationToken);
+            if (generation != globalSearchGeneration || cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            globalSearchMatches = matches;
+            RefreshVisibleAssets();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // A newer query or disposal made this result obsolete.
+        }
+        catch (Exception exception)
+        {
+            if (generation == globalSearchGeneration)
+            {
+                ApplicationLog.GlobalSearchFailed(logger, query, exception);
+                GlobalSearchError = exception.Message;
+                globalSearchMatches = [];
+                RefreshVisibleAssets();
+            }
+        }
+        finally
+        {
+            if (generation == globalSearchGeneration)
+            {
+                IsGlobalSearchBusy = false;
+                OnPropertyChanged(nameof(GlobalSearchStateText));
+            }
+        }
+    }
+
+    private void CancelAndDisposeGlobalSearchCancellation()
+    {
+        var cancellation = globalSearchCancellation;
+        globalSearchCancellation = null;
+        if (cancellation is null)
+        {
+            return;
+        }
+
+        if (!cancellation.IsCancellationRequested)
+        {
+            cancellation.Cancel();
+        }
+
+        cancellation.Dispose();
+    }
+
     private void RebuildNavigation()
     {
         IndexedAssetCount = allAssets.Count;
@@ -1471,21 +1655,31 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         SelectedCard = null;
         Assets.Clear();
-        var query = allAssets.AsEnumerable();
-        if (!string.IsNullOrWhiteSpace(SelectedFolderPath))
+        IEnumerable<AssetSummary> query;
+        if (IsGlobalSearchActive)
         {
-            query = query.Where(asset =>
-                AssetFiltering.IsInFolder(asset, SelectedFolderPath));
+            query = globalSearchMatches
+                .Where(match => GlobalAssetSearchPolicy.MatchesType(match.Asset, GlobalSearchType))
+                .Select(static match => match.Asset);
         }
-
-        if (InventoryFilter != AssetInventoryFilter.None)
+        else
         {
-            query = query.Where(asset => AssetFiltering.MatchesInventoryFilter(asset, InventoryFilter));
-        }
+            query = allAssets;
+            if (!string.IsNullOrWhiteSpace(SelectedFolderPath))
+            {
+                query = query.Where(asset =>
+                    AssetFiltering.IsInFolder(asset, SelectedFolderPath));
+            }
 
-        if (!string.IsNullOrWhiteSpace(SearchText))
-        {
-            query = query.Where(asset => AssetFiltering.MatchesSearch(asset, SearchText));
+            if (InventoryFilter != AssetInventoryFilter.None)
+            {
+                query = query.Where(asset => AssetFiltering.MatchesInventoryFilter(asset, InventoryFilter));
+            }
+
+            if (!string.IsNullOrWhiteSpace(SearchText))
+            {
+                query = query.Where(asset => AssetFiltering.MatchesSearch(asset, SearchText));
+            }
         }
 
         foreach (var asset in AssetSorting.Apply(query, SortMode))
@@ -1500,8 +1694,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 RequestContentInventory,
                 AddToComparison,
                 RequestUnrealImportPackage,
-                StringComparer.OrdinalIgnoreCase.Equals(asset.Id, comparisonLeft?.Id) ||
-                StringComparer.OrdinalIgnoreCase.Equals(asset.Id, comparisonRight?.Id));
+                ShowInLibrary,
+                FindRelated,
+                GlobalSearchDescription(asset),
+                LibraryRelativeLocation(asset),
+                selectedForComparison: StringComparer.OrdinalIgnoreCase.Equals(asset.Id, comparisonLeft?.Id) ||
+                    StringComparer.OrdinalIgnoreCase.Equals(asset.Id, comparisonRight?.Id));
             Assets.Add(card);
             if (StringComparer.Ordinal.Equals(asset.Id, selectedId) &&
                 StringComparer.OrdinalIgnoreCase.Equals(asset.JsonPath, selectedJsonPath))
@@ -1511,6 +1709,50 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         OnPropertyChanged(nameof(VisibleAssetCount));
+        OnPropertyChanged(nameof(GlobalSearchStateText));
+    }
+
+    private string? GlobalSearchDescription(AssetSummary asset)
+    {
+        if (!IsGlobalSearchActive)
+        {
+            return null;
+        }
+
+        var match = globalSearchMatches.FirstOrDefault(candidate =>
+            StringComparer.OrdinalIgnoreCase.Equals(candidate.Asset.JsonPath, asset.JsonPath));
+        return match is null ? null : $"Matched {match.Field}: {match.Value}";
+    }
+
+    private string LibraryRelativeLocation(AssetSummary asset)
+    {
+        if (string.IsNullOrWhiteSpace(Settings.LibraryRoot))
+        {
+            return asset.AssetFolderPath;
+        }
+
+        try
+        {
+            return Path.GetRelativePath(Settings.LibraryRoot, asset.AssetFolderPath);
+        }
+        catch (Exception)
+        {
+            return asset.AssetFolderPath;
+        }
+    }
+
+    private void FindRelated(AssetSummary asset) => GlobalSearchText = asset.Id;
+
+    private void ShowInLibrary(AssetSummary asset)
+    {
+        GlobalSearchText = string.Empty;
+        SelectedFolderPath = asset.AssetFolderPath;
+        SelectedCard = Assets.FirstOrDefault(card =>
+            StringComparer.OrdinalIgnoreCase.Equals(card.Asset.JsonPath, asset.JsonPath));
+        LibraryLocationRequested?.Invoke(asset.AssetFolderPath);
+        StatusText = SelectedCard is null
+            ? $"{asset.Name} is hidden by the restored local filters."
+            : $"Selected {asset.Name} in the library.";
     }
 
     private void CopySelectedFolder()
@@ -1558,6 +1800,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Settings.PropertyChanged -= OnSettingsPropertyChanged;
         Preview.PropertyChanged -= OnPreviewPropertyChanged;
         CancelAndDisposeScanCancellation();
+        CancelAndDisposeGlobalSearchCancellation();
         CancelAndDisposeSmartCollectionCountsCancellation();
         foreach (var card in Assets)
         {

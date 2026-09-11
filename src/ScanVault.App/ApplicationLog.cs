@@ -62,4 +62,7 @@ internal static partial class ApplicationLog
 
     [LoggerMessage(2013, LogLevel.Error, "Duplicate analysis command failed")]
     public static partial void DuplicateAnalysisCommandFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(2014, LogLevel.Warning, "Global asset search failed for query {Query}")]
+    public static partial void GlobalSearchFailed(ILogger logger, string query, Exception exception);
 }

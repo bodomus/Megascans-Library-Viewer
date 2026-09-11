@@ -29,6 +29,10 @@ public sealed class AssetCardViewModel : ObservableObject, IDisposable
         Action<AssetSummary>? showInventory = null,
         Action<AssetSummary>? addToComparison = null,
         Action<AssetSummary>? createUnrealImportPackage = null,
+        Action<AssetSummary>? showInLibrary = null,
+        Action<AssetSummary>? findRelated = null,
+        string? globalSearchMatch = null,
+        string? libraryRelativeLocation = null,
         bool selectedForComparison = false)
     {
         Asset = asset;
@@ -37,17 +41,25 @@ public sealed class AssetCardViewModel : ObservableObject, IDisposable
         ShowContentInventoryCommand = new RelayCommand(() => showInventory?.Invoke(asset), () => showInventory is not null);
         AddToComparisonCommand = new RelayCommand(() => addToComparison?.Invoke(asset), () => addToComparison is not null);
         CreateUnrealImportPackageCommand = new RelayCommand(() => createUnrealImportPackage?.Invoke(asset), () => createUnrealImportPackage is not null);
+        ShowInLibraryCommand = new RelayCommand(() => showInLibrary?.Invoke(asset), () => showInLibrary is not null);
+        FindRelatedCommand = new RelayCommand(() => findRelated?.Invoke(asset), () => findRelated is not null && !string.IsNullOrWhiteSpace(asset.Id));
         OpenFolderCommand = CreateActionCommand("Open folder", () => interactions.OpenFolder(asset.AssetFolderPath), "Opened asset folder.", reportStatus, logger);
         CopyAssetIdCommand = CreateActionCommand("Copy asset ID", () => interactions.CopyText(asset.Id), "Asset ID copied.", reportStatus, logger);
         CopyFolderPathCommand = CreateActionCommand("Copy folder path", () => interactions.CopyText(asset.AssetFolderPath), "Asset folder path copied.", reportStatus, logger);
         CopyJsonPathCommand = CreateActionCommand("Copy JSON path", () => interactions.CopyText(asset.JsonPath), "Metadata JSON path copied.", reportStatus, logger);
         Badges = BuildBadges(asset.Content);
+        GlobalSearchMatch = globalSearchMatch;
+        LibraryRelativeLocation = libraryRelativeLocation;
         isInComparison = selectedForComparison;
     }
 
     public AssetSummary Asset { get; }
     public string Name => Asset.Name;
     public string IdDisplay => $"ID: {Asset.Id}";
+    public string? GlobalSearchMatch { get; }
+    public bool HasGlobalSearchMatch => GlobalSearchMatch is not null;
+    public string? LibraryRelativeLocation { get; }
+    public bool HasLibraryRelativeLocation => LibraryRelativeLocation is not null;
     public string TypeAndCategory
     {
         get
@@ -157,6 +169,8 @@ public sealed class AssetCardViewModel : ObservableObject, IDisposable
     public ICommand ShowContentInventoryCommand { get; }
     public ICommand AddToComparisonCommand { get; }
     public ICommand CreateUnrealImportPackageCommand { get; }
+    public ICommand ShowInLibraryCommand { get; }
+    public ICommand FindRelatedCommand { get; }
     public ICommand OpenFolderCommand { get; }
     public ICommand CopyAssetIdCommand { get; }
     public ICommand CopyFolderPathCommand { get; }

@@ -44,6 +44,8 @@ Inventory returns to the original deterministic asset array before `SqliteAssetI
 
 Filtering, search, and sorting compose in memory over the indexed `AssetSummary` read model. Search covers name, exact ID, canonical type, categories, typed tags, biome, region, mesh/texture filenames, map types, completeness, issues, variants, and LOD labels. `AssetSorting` owns twelve stable logic modes and always uses ID then folder path as tie-breakers. The chosen enum value is persisted with the per-user settings; display labels are presentation data only.
 
+Global search is a separate, transient mode over the complete `allAssets` snapshot loaded from `IAssetIndex`; it never rescans the filesystem. `GlobalAssetSearchPolicy` owns escaped, case-insensitive `*`/`_` wildcard matching, indexed-field enumeration, deterministic match reasons, and result-type classification. `GlobalAssetSearchService` executes matching away from the dispatcher, while `MainViewModel` debounces input, cancels superseded work, rejects stale generations, and publishes cards on the captured UI context. Global mode deliberately ignores the selected physical folder, local search, and persisted inventory filters. Those values remain unchanged and become active again when global search is cleared. Show in Library clears global mode, restores the matching card through `(ID, JSON path)` identity, and asks `MainWindow` to select the corresponding tree node.
+
 `AssetFiltering.BuildFolderTree` derives physical navigation and descendant-inclusive counts from indexed paths, never from a synchronous UI-thread filesystem walk. A selected card is restored after filter/sort rebuilds using `(ID, JSON path)` identity and clears when that identity is no longer visible.
 
 ## WPF state and images

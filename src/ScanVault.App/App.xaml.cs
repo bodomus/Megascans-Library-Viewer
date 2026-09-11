@@ -32,6 +32,7 @@ public partial class App : Application
                     services.AddSingleton<IScanBuildInfoProvider>(provider => provider.GetRequiredService<ApplicationBuildInfo>());
                     services.AddSingleton<IImageLoader, BoundedImageLoader>();
                     services.AddSingleton<IAssetInteractionService, DesktopAssetInteractionService>();
+                    services.AddSingleton<IGlobalAssetSearchService, GlobalAssetSearchService>();
                     services.AddSingleton<DiagnosticsService>();
                     services.AddSingleton<MainViewModel>();
                     services.AddTransient<MainWindow>();
