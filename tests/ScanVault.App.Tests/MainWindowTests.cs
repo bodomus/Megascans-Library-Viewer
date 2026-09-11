@@ -12,6 +12,7 @@ namespace ScanVault.App.Tests;
 
 public sealed class MainWindowTests
 {
+    // UI test: realizes application windows and catches XAML binding regressions.
     [Fact]
     public void RealizesApplicationWindowsWithExpectedBindings()
     {
@@ -24,6 +25,7 @@ public sealed class MainWindowTests
             global::ScanVault.App.ContentInventoryWindow? contentWindow = null;
             global::ScanVault.App.AssetComparisonWindow? comparisonWindow = null;
             global::ScanVault.App.ExportReportWindow? exportReportWindow = null;
+            global::ScanVault.App.UnrealImportPackageWindow? unrealImportPackageWindow = null;
             try
             {
                 application = new();
@@ -118,6 +120,18 @@ public sealed class MainWindowTests
                 exportReportWindow.Show();
                 exportReportWindow.UpdateLayout();
                 Assert.Equal("Export Report", exportReportWindow.Title);
+
+                unrealImportPackageWindow = new()
+                {
+                    DataContext = new UnrealImportPackageWindowDataContext(),
+                    ShowActivated = false,
+                    ShowInTaskbar = false,
+                    Left = -10_000,
+                    Top = -10_000
+                };
+                unrealImportPackageWindow.Show();
+                unrealImportPackageWindow.UpdateLayout();
+                Assert.Equal("Create UE Import Package", unrealImportPackageWindow.Title);
             }
             catch (Exception exception)
             {
@@ -125,6 +139,7 @@ public sealed class MainWindowTests
             }
             finally
             {
+                unrealImportPackageWindow?.Close();
                 exportReportWindow?.Close();
                 comparisonWindow?.Close();
                 contentWindow?.Close();
@@ -237,6 +252,48 @@ public sealed class MainWindowTests
         public long WrittenRows { get; } = 11;
 
         public TimeSpan Elapsed { get; } = TimeSpan.FromSeconds(2);
+    }
+
+    private sealed class UnrealImportPackageWindowDataContext
+    {
+        public string AssetName { get; } = "UE Binding Test";
+        public string AssetType { get; } = "Surface";
+        public string ReadinessDisplay { get; } = "UE Ready";
+        public int SchemaVersion { get; } = 1;
+        public string PackageId { get; } = "package-id";
+        public string DestinationBasePath { get; set; } = "/Game/Megascans";
+        public string FinalContentPath { get; } = "/Game/Megascans/Surfaces/UE_Binding_Test";
+        public string DestinationPath { get; set; } = @"C:\Exports\package.scanvault-ue.json";
+        public IReadOnlyList<object> Profiles { get; } = [];
+        public object? SelectedProfile { get; set; }
+        public bool IsEditableProfile { get; } = true;
+        public string EditableProfileName { get; set; } = "Test Profile";
+        public string EditableProfileDescription { get; set; } = "Description";
+        public string EditableMasterMaterialPath { get; set; } = "/Game/M_Master";
+        public string EditableMaterialInstancePrefix { get; set; } = "MI_";
+        public IReadOnlyList<AssetTypeOption> AssetTypeOptions { get; } = [new("Surface", true)];
+        public bool EditableDefaultImportLods { get; set; } = true;
+        public bool EditableDefaultEnableNanite { get; set; }
+        public bool EditableDefaultCreateMaterialInstance { get; set; } = true;
+        public string SanitizedAssetName { get; } = "UE_Binding_Test";
+        public string PrimaryVariant { get; } = "None";
+        public string MaterialInstanceName { get; } = "MI_UE_Binding_Test";
+        public bool ImportLods { get; set; } = true;
+        public bool EnableNanite { get; set; }
+        public bool CreateMaterialInstance { get; set; } = true;
+        public IReadOnlyList<object> Lods { get; } = [];
+        public IReadOnlyList<object> Textures { get; } = [];
+        public IReadOnlyList<object> ParameterMappings { get; } = [];
+        public IReadOnlyList<object> ValidationIssues { get; } = [];
+        public string JsonPreview { get; } = "{}";
+        public string StatusText { get; } = "Ready.";
+        public bool CanExport { get; } = true;
+    }
+
+    private sealed class AssetTypeOption(string assetType, bool isSelected)
+    {
+        public string AssetType { get; } = assetType;
+        public bool IsSelected { get; set; } = isSelected;
     }
 
     private sealed class NullImageLoader : IImageLoader

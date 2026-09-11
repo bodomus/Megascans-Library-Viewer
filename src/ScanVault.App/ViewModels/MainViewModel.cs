@@ -216,7 +216,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public RelayCommand ResetSmartCollectionCommand { get; }
     public event Action<ContentInventoryViewModel>? ContentInventoryRequested;
     public event Action<AssetComparisonViewModel>? AssetComparisonRequested;
-    public event Action<UnrealImportPackageViewModel>? UnrealImportPackageRequested;
+    public event Action<AssetSummary>? UnrealImportPackageRequested;
     public string ComparisonLeftName => comparisonLeft?.Name ?? "Select first asset";
     public string ComparisonRightName => comparisonRight?.Name ?? "Select second asset";
     public int ComparisonCount => (comparisonLeft is null ? 0 : 1) + (comparisonRight is null ? 0 : 1);
@@ -1287,18 +1287,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     }
     private void RequestContentInventory(AssetSummary asset) =>
         ContentInventoryRequested?.Invoke(new ContentInventoryViewModel(asset, interactions, logger));
-    private async void RequestUnrealImportPackage(AssetSummary asset)
+    public void NotifyUnrealImportPackageOpenFailed(AssetSummary asset, Exception exception)
     {
-        try
-        {
-            UnrealImportPackageRequested?.Invoke(await CreateUnrealImportPackageViewModelAsync(asset, CancellationToken.None));
-        }
-        catch (Exception exception)
-        {
-            ApplicationLog.AssetActionFailed(logger, "Create UE Import Package", asset.Id, exception);
-            StatusText = $"Create UE Import Package failed: {exception.Message}";
-        }
+        ApplicationLog.UnrealImportPackageOpenFailed(logger, asset.Id, exception);
+        StatusText = $"Create UE Import Package failed: {exception.Message}";
     }
+
+    private void RequestUnrealImportPackage(AssetSummary asset) =>
+        UnrealImportPackageRequested?.Invoke(asset);
 
     private void AddToComparison(AssetSummary asset)
     {

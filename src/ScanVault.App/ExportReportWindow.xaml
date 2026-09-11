@@ -4,7 +4,8 @@
         Title="Export Report" Width="680" Height="700" MinWidth="600" MinHeight="580"
         WindowStartupLocation="CenterOwner"
         Background="{StaticResource WindowBackground}" Foreground="{StaticResource TextPrimary}">
-    <Grid Margin="16">
+    <Grid Margin="
+    16" ScrollViewer.CanContentScroll="True" ScrollViewer.VerticalScrollBarVisibility="Auto">
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
@@ -17,6 +18,7 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="10" />
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0" Margin="0,0,10,0">
                         <TextBlock Text="Report profile" FontWeight="SemiBold" />
@@ -106,7 +108,7 @@
         </Border>
 
         <DockPanel Grid.Row="2" Margin="0,14,0,0">
-            <Button DockPanel.Dock="Right" Content="Export" Click="OnExportClick" IsEnabled="{Binding CanExport}" Width="92" Padding="12,6" />
+            <Button DockPanel.Dock="Left" Content="Export" Click="OnExportClick" IsEnabled="{Binding CanExport}" Width="92" Padding="12,6" />
             <Button DockPanel.Dock="Right" Content="Cancel export" Click="OnCancelExportClick" IsEnabled="{Binding CanCancel}" Width="110" Padding="12,6" Margin="0,0,8,0" />
             <Button DockPanel.Dock="Right" Content="Close" IsCancel="True" Width="82" Padding="12,6" Margin="0,0,8,0" />
         </DockPanel>

@@ -1,4 +1,5 @@
 using System.IO;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ScanVault.App.Services;
 using ScanVault.App.ViewModels;
@@ -98,6 +99,59 @@ public sealed class UnrealImportPackageViewModelTests : IDisposable
         Assert.Equal(viewModel.Package.PackageId, service.ExportedPackage?.PackageId);
         Assert.Equal("/Game/Exports", settingsStore.Value.UnrealImportPackageOrDefault.DefaultDestinationBasePath);
         Assert.Equal(root, settingsStore.Value.UnrealImportPackageOrDefault.LastManifestExportFolder);
+    }
+
+    // Regression test: export UI boundary catches exceptions, reports the user error, and logs the original exception.
+    [Fact]
+    public async Task ExportBoundaryHandlesExceptionAndKeepsWindowStateReusable()
+    {
+        var exception = new InvalidOperationException("Destination folder is unavailable.");
+        var service = new RecordingPackageExportService { ExportException = exception };
+        var logger = new RecordingLogger<UnrealImportPackageViewModel>();
+        var viewModel = CreateViewModel(CreateAsset("export-failure", "Surface"), service: service, logger: logger);
+        await viewModel.LoadAsync(CancellationToken.None);
+        viewModel.DestinationPath = Path.Combine(root, "export-failure.scanvault-ue.json");
+        var warnings = new List<string>();
+
+        await UnrealImportPackageWindowErrorBoundary.ExportAsync(
+            viewModel,
+            viewModel.ExportAsync,
+            warnings.Add,
+            CancellationToken.None);
+
+        Assert.False(viewModel.IsExporting);
+        Assert.True(viewModel.CanExport);
+        Assert.Contains("Package export failed: Destination folder is unavailable.", viewModel.StatusText, StringComparison.Ordinal);
+        var warning = Assert.Single(warnings);
+        Assert.Contains("UE Import Package could not be exported.", warning, StringComparison.Ordinal);
+        Assert.Contains("Destination folder is unavailable.", warning, StringComparison.Ordinal);
+        Assert.Contains("See the application log for technical details.", warning, StringComparison.Ordinal);
+        var entry = Assert.Single(logger.Entries, static entry => entry.Level == LogLevel.Error);
+        Assert.Equal(LogLevel.Error, entry.Level);
+        Assert.Same(exception, entry.Exception);
+    }
+
+    // Regression test: open UI boundary catches preparation/window failures and preserves the original exception for logs.
+    [Fact]
+    public async Task OpenBoundaryHandlesExceptionAndReportsUserWarning()
+    {
+        var asset = CreateAsset("open-failure", "Surface");
+        var exception = new InvalidOperationException("Profile store is unreadable.");
+        Exception? logged = null;
+        var warnings = new List<string>();
+
+        await UnrealImportPackageWindowErrorBoundary.OpenAsync(
+            asset,
+            _ => Task.FromException(exception),
+            loggedException => logged = loggedException,
+            warnings.Add,
+            CancellationToken.None);
+
+        Assert.Same(exception, logged);
+        var warning = Assert.Single(warnings);
+        Assert.Contains("UE Import Package could not be opened.", warning, StringComparison.Ordinal);
+        Assert.Contains("Profile store is unreadable.", warning, StringComparison.Ordinal);
+        Assert.Contains("See the application log for technical details.", warning, StringComparison.Ordinal);
     }
 
     // Unit test: built-in profiles can be duplicated, saved as user profiles, and deleted.
@@ -287,7 +341,8 @@ public sealed class UnrealImportPackageViewModelTests : IDisposable
         AssetSummary asset,
         MemorySettingsStore? settingsStore = null,
         RecordingPackageExportService? service = null,
-        MemoryProfileStore? profileStore = null)
+        MemoryProfileStore? profileStore = null,
+        ILogger<UnrealImportPackageViewModel>? logger = null)
     {
         var store = settingsStore ?? new MemorySettingsStore(new(root));
         var settings = new SettingsViewModel(store);
@@ -298,7 +353,7 @@ public sealed class UnrealImportPackageViewModelTests : IDisposable
             service ?? new RecordingPackageExportService(),
             settings,
             ApplicationBuildInfo.Create("1.0.0", "1.0.0+abcdef1", "abcdef1", "Test"),
-            NullLogger<UnrealImportPackageViewModel>.Instance);
+            logger ?? NullLogger<UnrealImportPackageViewModel>.Instance);
     }
 
     private AssetSummary CreateAsset(
@@ -392,6 +447,7 @@ public sealed class UnrealImportPackageViewModelTests : IDisposable
     private sealed class RecordingPackageExportService : IUnrealImportPackageExportService
     {
         public string SerializedText { get; init; } = "{}";
+        public Exception? ExportException { get; init; }
         public bool SerializeCalled { get; private set; }
         public UnrealImportPackage? ExportedPackage { get; private set; }
         public string Serialize(UnrealImportPackage package)
@@ -405,8 +461,29 @@ public sealed class UnrealImportPackageViewModelTests : IDisposable
             string destinationPath,
             CancellationToken cancellationToken)
         {
+            if (ExportException is not null)
+            {
+                return Task.FromException<UnrealImportPackageExportResult>(ExportException);
+            }
+
             ExportedPackage = package;
             return Task.FromResult(new UnrealImportPackageExportResult(destinationPath, 123));
         }
+    }
+
+    private sealed class RecordingLogger<T> : ILogger<T>
+    {
+        public List<Entry> Entries { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter) =>
+            Entries.Add(new(logLevel, eventId, exception, formatter(state, exception)));
+
+        public sealed record Entry(LogLevel Level, EventId EventId, Exception? Exception, string Message);
     }
 }

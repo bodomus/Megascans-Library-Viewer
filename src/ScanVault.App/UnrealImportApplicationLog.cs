@@ -37,4 +37,19 @@ internal static partial class ApplicationLog
         string action,
         string profileId,
         string profileName);
+
+    [LoggerMessage(2205, LogLevel.Error,
+        "UE import package window failed to open for asset {AssetId}")]
+    public static partial void UnrealImportPackageOpenFailed(
+        ILogger logger,
+        string assetId,
+        Exception exception);
+
+    [LoggerMessage(2206, LogLevel.Error,
+        "UE import package export failed for asset {AssetId}; package {PackageId}")]
+    public static partial void UnrealImportPackageExportFailed(
+        ILogger logger,
+        string assetId,
+        string packageId,
+        Exception exception);
 }

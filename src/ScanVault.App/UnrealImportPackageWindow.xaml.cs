@@ -62,7 +62,16 @@ public partial class UnrealImportPackageWindow : Window
             }
         }
 
-        await viewModel.ExportAsync(CancellationToken.None);
+        await UnrealImportPackageWindowErrorBoundary.ExportAsync(
+            viewModel,
+            viewModel.ExportAsync,
+            message => MessageBox.Show(
+                this,
+                message,
+                "ScanVault UE import package",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning),
+            CancellationToken.None);
     }
 
     private void OnCopyManifestClick(object sender, RoutedEventArgs e)

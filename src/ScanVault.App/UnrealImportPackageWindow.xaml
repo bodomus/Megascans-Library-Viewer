@@ -12,16 +12,16 @@
         </Grid.RowDefinitions>
 
         <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
-            <StackPanel>
+            <StackPanel Margin="0,0,14,0">
                 <DockPanel>
                     <StackPanel DockPanel.Dock="Left">
                         <TextBlock Text="{Binding AssetName}" FontSize="20" FontWeight="SemiBold" />
                         <TextBlock Foreground="{StaticResource TextSecondary}">
-                            <Run Text="{Binding AssetType}" />
+                            <Run Text="{Binding AssetType, Mode=OneWay}" />
                             <Run Text="    " />
-                            <Run Text="{Binding ReadinessDisplay}" />
+                            <Run Text="{Binding ReadinessDisplay, Mode=OneWay}" />
                             <Run Text="    Schema v" />
-                            <Run Text="{Binding SchemaVersion}" />
+                            <Run Text="{Binding SchemaVersion, Mode=OneWay}" />
                         </TextBlock>
                     </StackPanel>
                     <TextBlock DockPanel.Dock="Right" Text="{Binding PackageId}" Foreground="{StaticResource TextSecondary}" TextAlignment="Right" />
@@ -157,7 +157,7 @@
                 </DataGrid>
 
                 <TextBlock Text="Manifest JSON" FontWeight="SemiBold" Margin="0,14,0,5" />
-                <TextBox Text="{Binding JsonPreview}" FontFamily="Consolas" FontSize="12" TextWrapping="NoWrap"
+                <TextBox Text="{Binding JsonPreview, Mode=OneWay}" FontFamily="Consolas" FontSize="12" TextWrapping="NoWrap"
                          AcceptsReturn="True" IsReadOnly="True" HorizontalScrollBarVisibility="Auto"
                          VerticalScrollBarVisibility="Auto" Height="220" />
             </StackPanel>

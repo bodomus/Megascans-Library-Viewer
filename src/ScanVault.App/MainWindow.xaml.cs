@@ -377,14 +377,33 @@ public partial class MainWindow : Window
         };
         window.Show();
     }
-    private void OnUnrealImportPackageRequested(UnrealImportPackageViewModel viewModel)
+    private async void OnUnrealImportPackageRequested(AssetSummary asset)
     {
-        var window = new UnrealImportPackageWindow
+        if (DataContext is not MainViewModel viewModel)
         {
-            Owner = this,
-            DataContext = viewModel
-        };
-        window.ShowDialog();
+            return;
+        }
+
+        await UnrealImportPackageWindowErrorBoundary.OpenAsync(
+            asset,
+            async cancellationToken =>
+            {
+                var package = await viewModel.CreateUnrealImportPackageViewModelAsync(asset, cancellationToken);
+                var window = new UnrealImportPackageWindow
+                {
+                    Owner = this,
+                    DataContext = package
+                };
+                window.ShowDialog();
+            },
+            exception => viewModel.NotifyUnrealImportPackageOpenFailed(asset, exception),
+            message => MessageBox.Show(
+                this,
+                message,
+                "ScanVault UE import package",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning),
+            CancellationToken.None);
     }
     private void OnPreviewPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {

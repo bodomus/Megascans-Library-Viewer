@@ -107,7 +107,7 @@ public sealed class UnrealImportPackageViewModel : ObservableObject
         this.logger = logger;
         destinationBasePath = settings.UnrealImportPackageSettings.DefaultDestinationBasePath;
         package = EmptyPackage(asset);
-        ExportCommand = new AsyncRelayCommand(ExportAsync, () => CanExport);
+        ExportCommand = new AsyncRelayCommand(ExportCommandAsync, () => CanExport);
         NewProfileCommand = new AsyncRelayCommand(CreateNewProfileAsync);
         DuplicateProfileCommand = new AsyncRelayCommand(DuplicateSelectedProfileAsync, () => SelectedProfile is not null);
         SaveProfileCommand = new AsyncRelayCommand(SaveSelectedUserProfileAsync, () => SelectedProfile?.IsBuiltIn == false);
@@ -379,14 +379,27 @@ public sealed class UnrealImportPackageViewModel : ObservableObject
         {
             StatusText = "Package export cancelled. No partial manifest was published.";
         }
-        catch (Exception exception)
-        {
-            StatusText = $"Package export failed: {exception.Message}";
-            ApplicationLog.UnrealImportPackageValidationFailed(logger, Asset.Id, Package.PackageId, exception);
-        }
         finally
         {
             IsExporting = false;
+        }
+    }
+
+    public void NotifyExportFailed(Exception exception)
+    {
+        StatusText = $"Package export failed: {exception.Message}";
+        ApplicationLog.UnrealImportPackageExportFailed(logger, Asset.Id, Package.PackageId, exception);
+    }
+
+    private async Task ExportCommandAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await ExportAsync(cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            NotifyExportFailed(exception);
         }
     }
 
