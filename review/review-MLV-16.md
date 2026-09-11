@@ -20,9 +20,15 @@ The application now has a dedicated global-search mode that searches the loaded 
 ## Evidence
 
 - Release build: passed with 0 warnings and 0 errors.
-- Tests: Core 105, Infrastructure 65, App 53; total 223 passed.
+- Tests: Core 105, Infrastructure 65, App 56; total 226 passed.
 - CRG updated; risk 0.50, no affected flows reported. Apparent test gaps are coarse graph results for WPF/DI/logging nodes and were checked against source, XAML compilation and direct tests.
 - Graphify refreshed and resolves the new policy/service/ViewModel/UI/test path.
+
+## Review follow-up
+
+- Show in Library now removes restored local text and inventory filters before selecting the requested asset.
+- A successful Rescan invalidates and reruns the active global query against its replacement index snapshot; the stale-result regression is covered.
+- Global result descriptions now use a case-insensitive JsonPath lookup built once per refresh, removing the per-card linear match scan.
 
 ## Acceptance gap
 
@@ -31,4 +37,3 @@ Interactive WPF screenshot capture could not be completed: the launched process 
 ## Files
 
 See `Task/MLV-16/implementation-report.md` for the complete changed-file list, commands, findings and remaining risks.
-

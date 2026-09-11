@@ -1288,6 +1288,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             foreach (var comparison in comparisonSessions.ToArray()) comparison.MarkStale();
             SelectedFolderPath = null;
             RebuildNavigation();
+            if (IsGlobalSearchActive)
+            {
+                // The successful scan replaced the index snapshot. Invalidate every result that
+                // was computed from the previous snapshot and rerun the still-active query.
+                StartGlobalSearch(debounce: false, cancellationToken);
+            }
             await RefreshSmartCollectionCountsAsync(cancellationToken);
             attemptStopwatch.Stop();
             lastScanStatus = ScanAttemptStatus.Succeeded;
@@ -1656,8 +1662,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         SelectedCard = null;
         Assets.Clear();
         IEnumerable<AssetSummary> query;
+        IReadOnlyDictionary<string, GlobalAssetSearchMatch>? matchesByJsonPath = null;
         if (IsGlobalSearchActive)
         {
+            matchesByJsonPath = globalSearchMatches
+                .GroupBy(static match => match.Asset.JsonPath, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(static group => group.Key, static group => group.First(), StringComparer.OrdinalIgnoreCase);
             query = globalSearchMatches
                 .Where(match => GlobalAssetSearchPolicy.MatchesType(match.Asset, GlobalSearchType))
                 .Select(static match => match.Asset);
@@ -1696,7 +1706,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 RequestUnrealImportPackage,
                 ShowInLibrary,
                 FindRelated,
-                GlobalSearchDescription(asset),
+                GlobalSearchDescription(asset, matchesByJsonPath),
                 LibraryRelativeLocation(asset),
                 selectedForComparison: StringComparer.OrdinalIgnoreCase.Equals(asset.Id, comparisonLeft?.Id) ||
                     StringComparer.OrdinalIgnoreCase.Equals(asset.Id, comparisonRight?.Id));
@@ -1712,16 +1722,17 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(GlobalSearchStateText));
     }
 
-    private string? GlobalSearchDescription(AssetSummary asset)
+    private static string? GlobalSearchDescription(
+        AssetSummary asset,
+        IReadOnlyDictionary<string, GlobalAssetSearchMatch>? matchesByJsonPath)
     {
-        if (!IsGlobalSearchActive)
+        if (matchesByJsonPath is null ||
+            !matchesByJsonPath.TryGetValue(asset.JsonPath, out var match))
         {
             return null;
         }
 
-        var match = globalSearchMatches.FirstOrDefault(candidate =>
-            StringComparer.OrdinalIgnoreCase.Equals(candidate.Asset.JsonPath, asset.JsonPath));
-        return match is null ? null : $"Matched {match.Field}: {match.Value}";
+        return $"Matched {match.Field}: {match.Value}";
     }
 
     private string LibraryRelativeLocation(AssetSummary asset)
@@ -1746,6 +1757,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private void ShowInLibrary(AssetSummary asset)
     {
         GlobalSearchText = string.Empty;
+        SearchText = string.Empty;
+        InventoryFilter = AssetInventoryFilter.None;
         SelectedFolderPath = asset.AssetFolderPath;
         SelectedCard = Assets.FirstOrDefault(card =>
             StringComparer.OrdinalIgnoreCase.Equals(card.Asset.JsonPath, asset.JsonPath));

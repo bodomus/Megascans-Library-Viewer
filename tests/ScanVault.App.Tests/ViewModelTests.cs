@@ -468,6 +468,74 @@ public sealed class ViewModelTests : IDisposable
         Assert.Equal(asset.JsonPath, viewModel.SelectedCard?.Asset.JsonPath);
     }
 
+    // Regression test: Show in Library removes a restored text filter that would hide the selected asset.
+    [Fact]
+    public async Task ShowInLibraryClearsRestoredLocalSearchBeforeSelectingAsset()
+    {
+        var folder = Path.Combine(root, "Nature", "Wood");
+        var asset = CreateAsset("wood", "Wooden Twigs", folder, "wood");
+        var other = CreateAsset("other", "Stone", Path.Combine(root, "Nature", "Stone"), "stone");
+        using var viewModel = CreateMainViewModel([asset, other], new(new(root)), new RecordingInteractions());
+        await viewModel.InitializeAsync(CancellationToken.None);
+        viewModel.SearchText = "Stone";
+        viewModel.GlobalSearchText = "Wooden";
+        await viewModel.WaitForGlobalSearchAsync();
+
+        Assert.Single(viewModel.Assets).ShowInLibraryCommand.Execute(null);
+
+        Assert.Equal(string.Empty, viewModel.SearchText);
+        Assert.Equal(asset.JsonPath, viewModel.SelectedCard?.Asset.JsonPath);
+        Assert.Contains(viewModel.Assets, card => card.Asset.JsonPath == asset.JsonPath);
+    }
+
+    // Regression test: Show in Library removes a restored inventory filter that would hide the selected asset.
+    [Fact]
+    public async Task ShowInLibraryClearsRestoredInventoryFilterBeforeSelectingAsset()
+    {
+        var folder = Path.Combine(root, "Nature", "Wood");
+        var asset = CreateAsset("wood", "Wooden Twigs", folder, "wood");
+        using var viewModel = CreateMainViewModel([asset], new(new(root)), new RecordingInteractions());
+        await viewModel.InitializeAsync(CancellationToken.None);
+        await viewModel.ToggleHasFbxCommand.ExecuteAsync(CancellationToken.None);
+        viewModel.GlobalSearchText = "Wooden";
+        await viewModel.WaitForGlobalSearchAsync();
+
+        Assert.Single(viewModel.Assets).ShowInLibraryCommand.Execute(null);
+
+        Assert.Equal(AssetInventoryFilter.None, viewModel.InventoryFilter);
+        Assert.Equal(asset.JsonPath, viewModel.SelectedCard?.Asset.JsonPath);
+        Assert.Contains(viewModel.Assets, card => card.Asset.JsonPath == asset.JsonPath);
+    }
+
+    // Regression test: a successful rescan reruns the active global query against the replacement index snapshot.
+    [Fact]
+    public async Task RescanRerunsGlobalSearchAgainstReplacementAssetsAndRejectsStaleResults()
+    {
+        var removed = CreateAsset("removed", "Wooden Old", Path.Combine(root, "Old"), "wood");
+        var replacement = CreateAsset("replacement", "Wooden New", Path.Combine(root, "New"), "wood");
+        var index = new MemoryIndex([removed]);
+        var search = new DelayedFirstSearchService();
+        using var viewModel = CreateMainViewModel(
+            [removed],
+            new(new(root)),
+            new RecordingInteractions(),
+            searchService: search,
+            index: index,
+            scanService: new ReplacingScanService(index, [replacement]));
+        await viewModel.InitializeAsync(CancellationToken.None);
+        viewModel.GlobalSearchText = "Wooden";
+        await search.FirstSearchStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        await viewModel.RescanCommand.ExecuteAsync(CancellationToken.None);
+        await viewModel.WaitForGlobalSearchAsync();
+
+        Assert.Equal("replacement", Assert.Single(viewModel.Assets).Asset.Id);
+        search.ReleaseFirstSearch();
+        await search.FirstSearchCompleted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal("replacement", Assert.Single(viewModel.Assets).Asset.Id);
+    }
+
     public void Dispose() => Directory.Delete(root, recursive: true);
 
     private static MainViewModel CreateMainViewModel(
@@ -475,9 +543,11 @@ public sealed class ViewModelTests : IDisposable
         MemorySettingsStore settingsStore,
         RecordingInteractions interactions,
         IndexCompatibilityInfo? compatibility = null,
-        IGlobalAssetSearchService? searchService = null)
+        IGlobalAssetSearchService? searchService = null,
+        MemoryIndex? index = null,
+        ILibraryScanService? scanService = null)
     {
-        var index = new MemoryIndex(assets, compatibility: compatibility);
+        index ??= new MemoryIndex(assets, compatibility: compatibility);
         var buildInfo = ApplicationBuildInfo.Create(
             "9.8.7",
             "9.8.7-test+abcdef1",
@@ -493,7 +563,7 @@ public sealed class ViewModelTests : IDisposable
         return new(
             index,
             searchService ?? new GlobalAssetSearchService(),
-            new NoOpScanService(),
+            scanService ?? new NoOpScanService(),
             settingsStore,
             new MemorySmartCollectionStore(),
             new NoOpReportExportService(),
@@ -626,14 +696,26 @@ public sealed class ViewModelTests : IDisposable
         }
     }
 
-    private sealed class MemoryIndex(
-        IReadOnlyList<AssetSummary> assets,
-        DuplicateAnalysisResult? latestDuplicateAnalysis = null,
-        IndexCompatibilityInfo? compatibility = null) : IAssetIndex
+    private sealed class MemoryIndex : IAssetIndex
     {
-        public IndexCompatibilityInfo Compatibility { get; } = compatibility ?? new(
-            IndexCompatibilityState.Compatible, 2, 2, true, true, false, "Index is compatible.");
+        private IReadOnlyList<AssetSummary> assets;
+        private readonly DuplicateAnalysisResult? latestDuplicateAnalysis;
+
+        public MemoryIndex(
+            IReadOnlyList<AssetSummary> assets,
+            DuplicateAnalysisResult? latestDuplicateAnalysis = null,
+            IndexCompatibilityInfo? compatibility = null)
+        {
+            this.assets = assets;
+            this.latestDuplicateAnalysis = latestDuplicateAnalysis;
+            Compatibility = compatibility ?? new(
+                IndexCompatibilityState.Compatible, 2, 2, true, true, false, "Index is compatible.");
+        }
+
+        public IndexCompatibilityInfo Compatibility { get; }
         public bool RequiresNormalizationRescan => Compatibility.RequiresRescan;
+
+        public void ReplaceAssets(IReadOnlyList<AssetSummary> replacement) => assets = replacement;
 
         public Task<IndexCompatibilityInfo> InspectCompatibilityAsync(
             CancellationToken cancellationToken) =>
@@ -685,6 +767,18 @@ public sealed class ViewModelTests : IDisposable
             IProgress<ScanProgress>? progress,
             CancellationToken cancellationToken) =>
             Task.FromResult(new ScanResult(0, 0, 0, 0, 0, 0, [], [], [], TimeSpan.Zero));
+    }
+
+    private sealed class ReplacingScanService(MemoryIndex index, IReadOnlyList<AssetSummary> replacement) : ILibraryScanService
+    {
+        public Task<ScanResult> ScanAsync(
+            LibrarySettings settings,
+            IProgress<ScanProgress>? progress,
+            CancellationToken cancellationToken)
+        {
+            index.ReplaceAssets(replacement);
+            return Task.FromResult(new ScanResult(0, 0, 1, 0, 0, 0, [], [], [], TimeSpan.Zero));
+        }
     }
 
 
@@ -778,6 +872,35 @@ public sealed class ViewModelTests : IDisposable
             }
 
             return [new(second, "Name", second.Name)];
+        }
+    }
+
+    private sealed class DelayedFirstSearchService : IGlobalAssetSearchService
+    {
+        private readonly TaskCompletionSource releaseFirstSearch = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int searchCount;
+
+        public TaskCompletionSource FirstSearchStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource FirstSearchCompleted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public void ReleaseFirstSearch() => releaseFirstSearch.TrySetResult();
+
+        public async Task<IReadOnlyList<GlobalAssetSearchMatch>> SearchAsync(
+            IReadOnlyList<AssetSummary> assets,
+            string query,
+            CancellationToken cancellationToken)
+        {
+            if (Interlocked.Increment(ref searchCount) == 1)
+            {
+                FirstSearchStarted.TrySetResult();
+                await releaseFirstSearch.Task;
+                FirstSearchCompleted.TrySetResult();
+            }
+
+            return assets
+                .Where(asset => asset.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
+                .Select(asset => new GlobalAssetSearchMatch(asset, "Name", asset.Name))
+                .ToArray();
         }
     }
 
