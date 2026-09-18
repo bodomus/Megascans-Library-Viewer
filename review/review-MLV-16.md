@@ -30,6 +30,13 @@ The application now has a dedicated global-search mode that searches the loaded 
 - A successful Rescan invalidates and reruns the active global query against its replacement index snapshot; the stale-result regression is covered.
 - Global result descriptions now use a case-insensitive JsonPath lookup built once per refresh, removing the per-card linear match scan.
 
+## Word-aware search follow-up
+
+- Plain queries now match complete case-insensitive Unicode letter/digit tokens, with `_`, `-`, whitespace, `.`, `/`, and `\` treated as boundaries. Thus `Table` matches `Wooden Table` and `Dining_Table_4K`, but not `vegetable` or `tabletop`; multiword queries require consecutive tokens.
+- Explicit wildcard behavior is unchanged: `*Table*` still matches `vegetable`, and `VAR_` still matches one character only.
+- Added Core-policy and ViewModel regression coverage for those rules, including tag-only false positives.
+- Final Release validation passed: build 0 warnings/0 errors; 232 tests passed (Core 110, Infrastructure 65, App 57); `git diff --check` is clean.
+
 ## Acceptance gap
 
 Interactive WPF screenshot capture could not be completed: the launched process exposed no main-window handle to this environment. The required real-library screenshots were not fabricated and remain to be captured manually.

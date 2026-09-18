@@ -5,15 +5,55 @@ namespace ScanVault.Core.Tests;
 
 public sealed class GlobalAssetSearchPolicyTests
 {
-    // Unit test: plain queries use case-insensitive substring matching.
+    // Unit test: plain queries match a complete token without case sensitivity.
     [Fact]
-    public void PlainQueryMatchesSubstringIgnoringCase()
+    public void PlainQueryMatchesWholeTokenIgnoringCase()
     {
         var asset = TestAssetFactory.Create("wood", Path.GetTempPath()) with { Name = "Wooden Sticks and Twigs" };
 
         var match = Assert.Single(GlobalAssetSearchPolicy.Search([asset], "WOODEN"));
 
         Assert.Equal("Name", match.Field);
+    }
+
+    // Unit test: plain tokens use non-alphanumeric separators in names and folder paths, and match typed tags.
+    [Fact]
+    public void PlainQueryMatchesTokenAcrossSupportedSeparators()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "Dining_Table_4K");
+        var assets = new[]
+        {
+            TestAssetFactory.Create("name", Path.GetTempPath()) with { Name = "Wooden Table" },
+            TestAssetFactory.Create("path", root) with { Name = "Chair" },
+            TestAssetFactory.Create("tag", Path.GetTempPath()) with
+            {
+                Name = "Chair",
+                Tags = [new AssetTag(AssetTagKind.Descriptive, "table")]
+            }
+        };
+
+        Assert.Equal(["name", "path", "tag"], GlobalAssetSearchPolicy.Search(assets, "table").Select(static match => match.Asset.Id));
+    }
+
+    // Unit test: plain tokens do not match partial words.
+    [Theory]
+    [InlineData("vegetable")]
+    [InlineData("tabletop")]
+    public void PlainQueryDoesNotMatchPartialWord(string name)
+    {
+        var asset = TestAssetFactory.Create("partial", Path.GetTempPath()) with { Name = name };
+
+        Assert.Empty(GlobalAssetSearchPolicy.Search([asset], "Table"));
+    }
+
+    // Unit test: multiword plain queries require consecutive complete tokens.
+    [Fact]
+    public void MultiwordPlainQueryMatchesConsecutiveTokens()
+    {
+        var asset = TestAssetFactory.Create("dining", Path.GetTempPath()) with { Name = "Wooden_Table_4K" };
+
+        Assert.Single(GlobalAssetSearchPolicy.Search([asset], "wooden table"));
+        Assert.Empty(GlobalAssetSearchPolicy.Search([asset], "table wooden"));
     }
 
     // Unit test: star wildcard spans any number of characters across a whole field.
@@ -23,6 +63,15 @@ public sealed class GlobalAssetSearchPolicyTests
         var asset = TestAssetFactory.Create("wood", Path.GetTempPath()) with { Name = "Wooden Sticks and Twigs" };
 
         Assert.Single(GlobalAssetSearchPolicy.Search([asset], "*Wooden*Twig*"));
+    }
+
+    // Unit test: explicit star wildcards retain whole-field substring behavior.
+    [Fact]
+    public void StarWildcardMatchesPartialWord()
+    {
+        var asset = TestAssetFactory.Create("vegetable", Path.GetTempPath()) with { Name = "vegetable" };
+
+        Assert.Single(GlobalAssetSearchPolicy.Search([asset], "*Table*"));
     }
 
     // Unit test: underscore wildcard matches exactly one character.

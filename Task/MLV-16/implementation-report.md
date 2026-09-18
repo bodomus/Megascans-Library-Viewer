@@ -33,7 +33,7 @@ The result card shows its library-relative location and, in global mode, the mat
 
 ## Functional behavior
 
-- Plain queries are case-insensitive substrings.
+- Plain queries are case-insensitive sequences of complete Unicode letter/digit tokens. A token boundary is the start/end of a field or any non-letter/non-digit character, including `_`, `-`, spaces, `.`, `/`, and `\`.
 - Wildcard queries are whole-field matches: `*` means zero or more characters and `_` exactly one.
 - All other regex characters are escaped literally; matching has a finite timeout and queries are limited to 512 characters.
 - Empty/whitespace query exits global mode instead of returning every item.
@@ -102,3 +102,21 @@ The MLV-16 review findings were addressed on `codex/MLV-16`:
 New regression tests cover Show in Library under restored text and inventory filters, plus a delayed old search that completes after Rescan. The test proves that the replacement-index result remains selected and the stale completion is ignored.
 
 Post-review CRG update indexed 154 files, 1,332 nodes and 3,860 edges on `codex/MLV-16` at `c6785c36907b`; its diff analysis found no affected flows. Graphify was not refreshed because this follow-up does not change architecture, project boundaries, DI composition or entry points.
+
+## Word-aware search follow-up
+
+The normal-query matcher now extracts Unicode letter/digit tokens from the query and matches the same consecutive tokens in a field, separated by one or more non-letter/non-digit characters. Consequently, `Table` finds `Wooden Table` and `Dining_Table_4K`, while it does not find `vegetable` or `tabletop`. A query without any letter/digit token yields no result. This implementation preserves the existing timeout and `NonBacktracking` regex protections.
+
+Queries containing `*` or `_` still use the unchanged whole-field wildcard matcher. Therefore `*Table*` finds `vegetable`, and `VAR_` continues to match `VAR1` but not `VAR10`.
+
+Added Core policy coverage for token boundaries, case-insensitive matching, partial-word rejection, consecutive multiword matching, and explicit wildcard substring behavior. Added a ViewModel regression proving that an asset whose only potential match is the `vegetable` tag is not published for `Table`.
+
+Validation after this follow-up:
+
+- `dotnet restore ScanVault.sln` — succeeded.
+- `dotnet build ScanVault.sln --configuration Release --no-restore -p:BuildInParallel=false -m:1` — succeeded, 0 warnings, 0 errors.
+- `dotnet test ScanVault.sln --configuration Release --no-build -p:BuildInParallel=false -m:1` — Core 110 and Infrastructure 65 passed.
+- `dotnet test tests/ScanVault.App.Tests/ScanVault.App.Tests.csproj --configuration Release --no-build --no-restore -p:BuildInParallel=false -m:1` — App 57 passed. Across all three test projects: 232 passed, 0 failed, 0 skipped.
+- `git diff --check` — no whitespace errors (only expected LF→CRLF notices).
+
+Post-change CRG incremental update completed successfully (1,337 indexed rows); the coarse graph report lists no affected flows. Graphify was not refreshed because the follow-up changes matching semantics and tests only, without changing architecture or project boundaries.

@@ -86,7 +86,7 @@ public static class GlobalAssetSearchPolicy
     {
         if (!query.Contains('*') && !query.Contains('_'))
         {
-            return value => value.Contains(query, StringComparison.OrdinalIgnoreCase);
+            return CreateTokenMatcher(query);
         }
 
         var pattern = string.Concat(query.Select(character => character switch
@@ -96,6 +96,28 @@ public static class GlobalAssetSearchPolicy
             _ => Regex.Escape(character.ToString())
         }));
         var regex = new Regex($"^(?:{pattern})$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking, MatchTimeout);
+        return regex.IsMatch;
+    }
+
+    private static Func<string, bool> CreateTokenMatcher(string query)
+    {
+        var tokens = Regex.Matches(
+                query,
+                @"[\p{L}\p{N}]+",
+                RegexOptions.CultureInvariant | RegexOptions.NonBacktracking,
+                MatchTimeout)
+            .Select(static match => Regex.Escape(match.Value))
+            .ToArray();
+        if (tokens.Length == 0)
+        {
+            return static _ => false;
+        }
+
+        var pattern = $@"(?:^|[^\p{{L}}\p{{N}}]){string.Join(@"[^\p{L}\p{N}]+", tokens)}(?:$|[^\p{{L}}\p{{N}}])";
+        var regex = new Regex(
+            pattern,
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking,
+            MatchTimeout);
         return regex.IsMatch;
     }
 
@@ -140,4 +162,3 @@ public static class GlobalAssetSearchPolicy
     private static bool Contains(string value, string term) =>
         value.Contains(term, StringComparison.OrdinalIgnoreCase);
 }
-

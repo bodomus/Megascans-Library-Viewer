@@ -382,6 +382,24 @@ public sealed class ViewModelTests : IDisposable
         }
     }
 
+    // Regression test: a plain query does not publish an asset matched only by a tag partial word.
+    [Fact]
+    public async Task GlobalSearchDoesNotPublishTagPartialWordMatches()
+    {
+        var assets = new[]
+        {
+            CreateAsset("table", "Wooden Table", root, "furniture"),
+            CreateAsset("vegetable", "Leaf Material", root, "vegetable")
+        };
+        using var viewModel = CreateMainViewModel(assets, new(new(root)), new RecordingInteractions());
+        await viewModel.InitializeAsync(CancellationToken.None);
+
+        viewModel.GlobalSearchText = "Table";
+        await viewModel.WaitForGlobalSearchAsync();
+
+        Assert.Equal("table", Assert.Single(viewModel.Assets).Asset.Id);
+    }
+
     // Regression test: clearing global search restores the preserved local folder and text filters.
     [Fact]
     public async Task ClearingGlobalSearchRestoresPreviousLocalView()
