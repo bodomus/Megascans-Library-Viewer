@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -347,6 +348,7 @@ public partial class MainWindow : Window
             subscribedViewModel.AssetComparisonRequested -= OnAssetComparisonRequested;
             subscribedViewModel.ContentInventoryRequested -= OnContentInventoryRequested;
             subscribedViewModel.UnrealImportPackageRequested -= OnUnrealImportPackageRequested;
+            subscribedViewModel.LibraryLocationRequested -= OnLibraryLocationRequested;
         }
 
         subscribedViewModel = e.NewValue as MainViewModel;
@@ -356,7 +358,50 @@ public partial class MainWindow : Window
             subscribedViewModel.AssetComparisonRequested += OnAssetComparisonRequested;
             subscribedViewModel.ContentInventoryRequested += OnContentInventoryRequested;
             subscribedViewModel.UnrealImportPackageRequested += OnUnrealImportPackageRequested;
+            subscribedViewModel.LibraryLocationRequested += OnLibraryLocationRequested;
         }
+    }
+
+    private void OnLibraryLocationRequested(string folderPath)
+    {
+        Dispatcher.BeginInvoke(() => TrySelectFolder(FolderTree, FolderTree.Items.Cast<FolderNode>(), folderPath), DispatcherPriority.Loaded);
+    }
+
+    private static bool TrySelectFolder(ItemsControl parent, IEnumerable<FolderNode> nodes, string folderPath)
+    {
+        foreach (var node in nodes)
+        {
+            var item = parent.ItemContainerGenerator.ContainerFromItem(node) as TreeViewItem;
+            if (item is null)
+            {
+                parent.UpdateLayout();
+                item = parent.ItemContainerGenerator.ContainerFromItem(node) as TreeViewItem;
+            }
+
+            if (item is null)
+            {
+                continue;
+            }
+
+            if (StringComparer.OrdinalIgnoreCase.Equals(node.FullPath, folderPath))
+            {
+                item.IsSelected = true;
+                item.BringIntoView();
+                return true;
+            }
+
+            if (folderPath.StartsWith(node.FullPath + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            {
+                item.IsExpanded = true;
+                item.UpdateLayout();
+                if (TrySelectFolder(item, node.Children, folderPath))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private void OnContentInventoryRequested(ContentInventoryViewModel viewModel)
@@ -435,6 +480,7 @@ public partial class MainWindow : Window
             subscribedViewModel.AssetComparisonRequested -= OnAssetComparisonRequested;
             subscribedViewModel.ContentInventoryRequested -= OnContentInventoryRequested;
             subscribedViewModel.UnrealImportPackageRequested -= OnUnrealImportPackageRequested;
+            subscribedViewModel.LibraryLocationRequested -= OnLibraryLocationRequested;
         }
     }
 }

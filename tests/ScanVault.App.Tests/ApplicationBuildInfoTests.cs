@@ -4,6 +4,7 @@ namespace ScanVault.App.Tests;
 
 public sealed class ApplicationBuildInfoTests
 {
+    // Unit test: explicit product metadata is formatted for the application title.
     [Fact]
     public void CreateUsesProductVersionInTitleAndKeepsBuildMetadataOutOfUi()
     {
@@ -23,6 +24,7 @@ public sealed class ApplicationBuildInfoTests
         Assert.DoesNotContain("0123456", buildInfo.WindowTitle, StringComparison.Ordinal);
     }
 
+    // Unit test: missing explicit fields are derived from informational version metadata.
     [Fact]
     public void CreateDerivesProductAndCommitFromInformationalVersion()
     {
@@ -40,6 +42,7 @@ public sealed class ApplicationBuildInfoTests
         Assert.Equal(ApplicationBuildInfo.UnknownValue, buildInfo.BuildConfiguration);
     }
 
+    // Unit test: absent build metadata produces stable user-facing fallback values.
     [Fact]
     public void CreateUsesExplicitFallbacksWhenMetadataIsAbsent()
     {
@@ -58,13 +61,14 @@ public sealed class ApplicationBuildInfoTests
         Assert.Equal(ApplicationBuildInfo.ProductName, buildInfo.WindowTitle);
     }
 
+    // Integration test: generated assembly metadata follows the authoritative product version.
     [Fact]
     public void FromAssemblyReadsGeneratedBuildMetadata()
     {
         var buildInfo = ApplicationBuildInfo.FromAssembly(typeof(App).Assembly);
 
-        Assert.Equal("0.2.0", buildInfo.ProductVersion);
-        Assert.StartsWith("0.2.0-", buildInfo.InformationalVersion, StringComparison.Ordinal);
+        Assert.Equal("0.5.0", buildInfo.ProductVersion);
+        Assert.StartsWith("0.5.0", buildInfo.InformationalVersion, StringComparison.Ordinal);
         Assert.NotEqual(ApplicationBuildInfo.UnknownValue, buildInfo.BuildConfiguration);
     }
 }
