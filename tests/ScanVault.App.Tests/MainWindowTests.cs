@@ -1,8 +1,10 @@
+using System.Diagnostics;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Microsoft.Extensions.Logging.Abstractions;
 using ScanVault.App.Services;
 using ScanVault.App.ViewModels;
@@ -12,45 +14,76 @@ namespace ScanVault.App.Tests;
 
 public sealed class MainWindowTests
 {
-    // UI test: realizes application windows and catches XAML binding regressions.
+    // Regression test: proves loading-to-main startup remains responsive with a large virtualized catalog.
     [Fact]
-    public void RealizesApplicationWindowsWithExpectedBindings()
+    public void RealizesApplicationWindowsWithResponsiveLoadingToMainTransition()
     {
         Exception? failure = null;
         var thread = new Thread(() =>
         {
             global::ScanVault.App.App? application = null;
+            global::ScanVault.App.LoadingWindow? loadingWindow = null;
             global::ScanVault.App.MainWindow? window = null;
             global::ScanVault.App.DiagnosticsWindow? diagnosticsWindow = null;
             global::ScanVault.App.ContentInventoryWindow? contentWindow = null;
             global::ScanVault.App.AssetComparisonWindow? comparisonWindow = null;
             global::ScanVault.App.ExportReportWindow? exportReportWindow = null;
             global::ScanVault.App.UnrealImportPackageWindow? unrealImportPackageWindow = null;
+            List<AssetCardViewModel> cards = [];
             try
             {
                 application = new();
                 application.InitializeComponent();
-                using var card = new AssetCardViewModel(
-                    CreateAsset(),
-                    new NullImageLoader(),
-                    new NullInteractions(),
-                    static _ => Task.CompletedTask,
-                    static _ => { },
-                    NullLogger<AssetCardViewModel>.Instance);
+                application.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                loadingWindow = new()
+                {
+                    ShowActivated = false,
+                    ShowInTaskbar = false,
+                    Left = -10_000,
+                    Top = -10_000
+                };
+                loadingWindow.Show();
+                loadingWindow.UpdateLayout();
+
+                Assert.Equal("ScanVault Loading", loadingWindow.Title);
+                Assert.Equal("Loading library index…", loadingWindow.LoadingStatusText.Text);
+                Assert.True(loadingWindow.LoadingProgressBar.IsIndeterminate);
+
+                var imageLoader = new NullImageLoader();
+                var interactions = new NullInteractions();
+                for (var index = 0; index < 200; index++)
+                {
+                    cards.Add(new AssetCardViewModel(
+                        CreateAsset(index),
+                        imageLoader,
+                        interactions,
+                        static _ => Task.CompletedTask,
+                        static _ => { },
+                        NullLogger<AssetCardViewModel>.Instance));
+                }
+
                 window = new()
                 {
-                    DataContext = new WindowDataContext([card]),
+                    DataContext = new WindowDataContext(cards),
                     ShowActivated = false,
                     ShowInTaskbar = false,
                     Left = -10_000,
                     Top = -10_000
                 };
 
+                application.MainWindow = window;
+                loadingWindow.Close();
                 window.Show();
+                application.ShutdownMode = ShutdownMode.OnMainWindowClose;
                 window.UpdateLayout();
+
+                Assert.Same(window, application.MainWindow);
+                Assert.False(loadingWindow.IsVisible);
+                AssertInputIsProcessed(window.Dispatcher);
 
                 var listBox = Assert.IsType<ListBox>(FindVisualChildByName<ListBox>(window, "AssetList"));
                 Assert.NotNull(listBox.ItemContainerGenerator.ContainerFromIndex(0));
+                Assert.Null(listBox.ItemContainerGenerator.ContainerFromIndex(cards.Count - 1));
                 Assert.Equal("ScanVault Test 9.8.7", window.Title);
 
                 Assert.NotNull(FindVisualChildByName<Button>(window, "ExportReportButton"));
@@ -145,6 +178,12 @@ public sealed class MainWindowTests
                 contentWindow?.Close();
                 diagnosticsWindow?.Close();
                 window?.Close();
+                loadingWindow?.Close();
+                foreach (var card in cards)
+                {
+                    card.Dispose();
+                }
+
                 application?.Shutdown();
             }
         });
@@ -156,6 +195,40 @@ public sealed class MainWindowTests
         {
             ExceptionDispatchInfo.Capture(failure).Throw();
         }
+    }
+
+    private static void AssertInputIsProcessed(Dispatcher dispatcher)
+    {
+        var frame = new DispatcherFrame();
+        var inputProcessed = false;
+        TimeSpan? inputLatency = null;
+        var stopwatch = Stopwatch.StartNew();
+        using var timeoutTimer = new System.Threading.Timer(
+            _ =>
+            {
+                _ = dispatcher.BeginInvoke(
+                    DispatcherPriority.Send,
+                    new Action(() => frame.Continue = false));
+            },
+            null,
+            TimeSpan.FromSeconds(5),
+            Timeout.InfiniteTimeSpan);
+        _ = dispatcher.BeginInvoke(
+            DispatcherPriority.Input,
+            new Action(() =>
+            {
+                inputProcessed = true;
+                inputLatency = stopwatch.Elapsed;
+                frame.Continue = false;
+            }));
+        Dispatcher.PushFrame(frame);
+        timeoutTimer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+        stopwatch.Stop();
+
+        Assert.True(inputProcessed, "DispatcherPriority.Input callback was starved by layout work.");
+        Assert.True(
+            inputLatency < TimeSpan.FromSeconds(5),
+            $"DispatcherPriority.Input callback took {inputLatency}.");
     }
 
     private static T? FindVisualChildByName<T>(DependencyObject parent, string name)
@@ -219,13 +292,13 @@ public sealed class MainWindowTests
         false,
         "Index is compatible.");
 
-    private static AssetSummary CreateAsset() =>
+    private static AssetSummary CreateAsset(int index = 0) =>
         new(
-            "xaml-binding",
-            "XAML Binding Test",
+            $"xaml-binding-{index}",
+            $"XAML Binding Test {index}",
             "Surface",
-            @"C:\fixtures\asset",
-            @"C:\fixtures\asset\xaml-binding.json",
+            $@"C:\fixtures\asset-{index}",
+            $@"C:\fixtures\asset-{index}\xaml-binding-{index}.json",
             null,
             null,
             null,

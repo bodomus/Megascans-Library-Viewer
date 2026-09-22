@@ -86,6 +86,8 @@ At build time, CI supplies its run suffix and short commit SHA as MSBuild proper
 
 The App composition root registers that build information once. `MainViewModel` exposes a compact product-version title without the SHA, while the structured startup event records product and informational versions, commit, configuration, runtime, OS, and process architecture. Missing optional metadata has explicit fallbacks and cannot prevent startup.
 
+Startup shows a presentation-only loading window under `ShutdownMode.OnExplicitShutdown`, yields once at dispatcher priority `Loaded`, and then runs the existing host and `MainViewModel` initialization. After initialization, App creates and assigns the real `MainWindow`, closes loading before the first main-window layout, shows main, and restores `OnMainWindowClose`. This ordering keeps startup concerns out of `VirtualizingWrapPanel` and avoids starving dispatcher input with layout retries.
+
 The Windows GitHub Actions workflow validates restore, Release build, tests, formatting, and whitespace for pushes and pull requests. Release publishing, packaging, repository writes, and branch-setting mutations are outside this workflow. See `versioning-and-ci.md` for exact version semantics and branch-protection guidance.
 
 ## Scan History
